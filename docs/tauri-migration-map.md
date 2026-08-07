@@ -49,6 +49,7 @@
 - `normalizePreviewTarget` shim 原样返回输入字符串（truthy 谎言）→ 渲染端跳过 `localPreviewTarget` 回退，裸字符串被当 PreviewTarget → preview 面板 `Cannot read properties of undefined (reading 'split')`。修为返回 `null`（类型本就允许），分类交还渲染端本地回退。教训：no-op shim 的返回形状必须**诚实**——truthy 占位值比显式拒绝更危险。
 - `filePathForTarget` 的 `file://` 解码在 Windows 产生 `/E:/...` 前导斜杠路径（URL 语法的一部分，不是路径的一部分）→ Rust `fs::read` 报 `os error 123`（预览不可用）。修为对盘符路径剥前导斜杠（`/^\/[A-Za-z]:[\\/]/`）。该路径来自 url-only 的 preview target（聊天内文件链接/工具结果）；Electron 时代由 normalizePreviewTarget 归一化掩盖了它。
 - 另注意：`npm run build` 会把 Electron 专用的 node-pty 塞进 `dist/node_modules`，Tauri 拒绝打包含 node_modules 的 frontendDist——`Makefile msi` 已内置剥除。
+- 0.18.3（2026-08-07）：`localPreviewTarget` 补齐 Windows 路径形态——file:// 解码剥盘符前导斜杠；`E:\`/`E:/`/UNC 判定为绝对路径不再误拼 cwd（原先 `E:\x` 被当相对路径拼出 `cwd/E:\x` 垃圾路径，同样 os error 123）。新增 `src/lib/local-preview.test.ts` 六项形态契约测试（vitest 全过）。后续可选：把 `normalizePreviewTarget` 实现为真正的 Rust 命令（含 stat/二进制嗅探），彻底消除对渲染端回退的依赖。
 
 ## 0. 通用范式（先定三条捷径，可省掉大半工作量）
 

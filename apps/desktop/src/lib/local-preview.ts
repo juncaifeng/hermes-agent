@@ -67,6 +67,19 @@ function pathToFileUrl(path: string) {
   return `file://${encoded.startsWith('/') ? encoded : `/${encoded}`}`
 }
 
+/** `/E:/...` from a Windows file URL is URL grammar, not part of the path —
+ *  CreateFile rejects it with ERROR_INVALID_NAME (os error 123). Strip the
+ *  leading slash for drive-letter paths. */
+function stripFileUrlLeadingSlash(value: string) {
+  return /^\/[A-Za-z]:[\\/]/.test(value) ? value.slice(1) : value
+}
+
+/** Absolute on any host we run on: POSIX root, drive letter (`E:/`/`E:\`), or
+ *  UNC. Anything else is relative and may be joined onto the workspace cwd. */
+function isAbsolutePath(value: string) {
+  return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\')
+}
+
 export function localPreviewTarget(rawTarget: string, cwd?: string | null): PreviewTarget | null {
   const raw = rawTarget.trim().replace(/^`|`$/g, '')
 
@@ -82,11 +95,11 @@ export function localPreviewTarget(rawTarget: string, cwd?: string | null): Prev
 
   if (/^file:\/\//i.test(raw)) {
     try {
-      path = decodeURIComponent(new URL(raw).pathname)
+      path = stripFileUrlLeadingSlash(decodeURIComponent(new URL(raw).pathname))
     } catch {
       path = raw.replace(/^file:\/\//i, '')
     }
-  } else if (!raw.startsWith('/') && cwd) {
+  } else if (!isAbsolutePath(raw) && cwd) {
     path = joinPath(cwd, raw)
   }
 

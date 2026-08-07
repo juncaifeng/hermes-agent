@@ -42,6 +42,9 @@ msi: ## full MSI bundle via WiX (resources: dist/ lands at <install>/dist)
 	## npm run build stages node-pty into dist/node_modules for the ELECTRON
 	## build; Tauri refuses to bundle a frontendDist containing node_modules
 	## (and it would bloat the resources copy), so strip it first.
+	## NOTE: if this fails fast with "failed to build app", a hermes-desktop
+	## instance is still holding the exe — close it (and stray WebView2
+	## processes), wait a few seconds, and retry.
 	rm -rf dist/node_modules
 	npx tauri build --bundles msi
 	@echo "MSI: $(MSI)"
