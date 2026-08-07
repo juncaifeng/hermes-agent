@@ -217,6 +217,23 @@ def _read_disk_cache() -> tuple[dict[str, Any] | None, float]:
     return (data, mtime)
 
 
+def _read_bundled_seed() -> dict[str, Any] | None:
+    """Return the model-catalog seed manifest shipped inside the PyInstaller
+    bundle (`hermes_cli/model-catalog.json`, same name as the repo source file
+    so `--add-data SRC;hermes_cli` lands it as a file next to this module),
+    or None when absent (dev checkouts). Used as the offline cold-cache
+    fallback in ``get_catalog``."""
+    try:
+        seed_path = Path(__file__).parent / "model-catalog.json"
+        if not seed_path.is_file():
+            return None
+        with open(seed_path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if _validate_manifest(data) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _write_disk_cache(data: dict[str, Any]) -> None:
     path = _cache_path()
     try:
@@ -326,6 +343,19 @@ def get_catalog(*, force_refresh: bool = False) -> dict[str, Any]:
         _catalog_cache = disk_data
         _catalog_cache_source_mtime = disk_mtime
         return disk_data
+
+    # Cold cache AND the network fetch failed: fall back to the bundled seed
+    # manifest (shipped inside the PyInstaller bundle as
+    # `hermes_cli/model_catalog_seed.json`; absent in dev checkouts). This
+    # keeps the provider/model list populated on offline installs — without
+    # it, a fresh machine with no disk cache and no reachable catalog URL
+    # reports an empty model catalog.
+    seed = _read_bundled_seed()
+    if seed is not None:
+        _write_disk_cache(seed)
+        _catalog_cache = seed
+        _catalog_cache_source_mtime = time.time()
+        return seed
 
     return {}
 

@@ -202,7 +202,11 @@ def _get_cache_path() -> Path:
 
 
 def _load_disk_cache() -> Dict[str, Any]:
-    """Load models.dev data from disk cache."""
+    """Load models.dev data from disk cache, falling back to the bundled
+    seed (`agent/models_dev_cache.json` — same name as the source cache file
+    so PyInstaller `--add-data SRC;agent` lands it as a file next to this
+    module; absent in dev checkouts) so an offline install still resolves
+    provider/model capabilities on a cold cache."""
     try:
         cache_path = _get_cache_path()
         if cache_path.exists():
@@ -210,6 +214,13 @@ def _load_disk_cache() -> Dict[str, Any]:
                 return json.load(f)
     except Exception as e:
         logger.debug("Failed to load models.dev disk cache: %s", e)
+    try:
+        seed_path = Path(__file__).parent / "models_dev_cache.json"
+        if seed_path.is_file():
+            with open(seed_path, encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.debug("Failed to load bundled models.dev seed: %s", e)
     return {}
 
 
