@@ -2,6 +2,7 @@
 
 use tauri::Manager;
 
+mod asset_server;
 mod bootstrap;
 mod commands;
 mod connection_config;
@@ -26,7 +27,38 @@ pub fn run() {
         .manage(commands::BackendState::default())
         .manage(terminal::TerminalState::default())
         .manage(gateway::GatewayState::default())
+        .manage(asset_server::AssetBase::default())
         .setup(|app| {
+            // Production: serve the renderer over loopback HTTP (see
+            // asset_server.rs) BEFORE the window is created, so the window can
+            // load with a loopback origin and its WebSocket upgrades carry an
+            // Origin any stock `hermes serve` whitelists.
+            #[cfg(not(debug_assertions))]
+            match asset_server::resolve_dist_dir(&app.handle()) {
+                Some(dist) => match asset_server::start(dist) {
+                    Ok(port) => app
+                        .state::<asset_server::AssetBase>()
+                        .set(format!("http://127.0.0.1:{port}")),
+                    Err(err) => eprintln!(
+                        "[assets] loopback server failed: {err}; falling back to asset protocol"
+                    ),
+                },
+                None => eprintln!("[assets] dist directory not found; falling back to asset protocol"),
+            }
+
+            // The main window is created in code (not tauri.conf.json) so its
+            // URL follows the active renderer origin: Vite dev server in dev,
+            // loopback HTTP in production, asset protocol as fallback.
+            let renderer_url: url::Url = asset_server::base_url(&app.handle())
+                .parse()
+                .unwrap_or_else(|_| "http://tauri.localhost".parse().expect("valid URL"));
+            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External(renderer_url))
+                .title("Hermes")
+                .inner_size(1200.0, 800.0)
+                .resizable(true)
+                .center()
+                .build()?;
+
             // Spawn the managed headless gateway (`hermes serve`) and, once it
             // announces its ephemeral port, rewrite `BackendState` so the
             // renderer connects to the real target.
@@ -49,6 +81,10 @@ pub fn run() {
                 gateway::stop_gateway(&gw);
             }
         })
+        // NOTE: the production renderer loads from http://127.0.0.1 (a REMOTE
+        // ACL context), where custom commands are denied unless an app
+        // permission allows them. Every command registered here must be
+        // mirrored into permissions/loopback-commands.json.
         .invoke_handler(tauri::generate_handler![
             commands::api,
             commands::get_version,

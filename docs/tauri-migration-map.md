@@ -35,6 +35,14 @@
 
 **日志路径不一致修复（2026-08-06）：** Rust 侧 `desktop_misc.rs::hermes_home()` 的默认回退原为 `~/.hermes`，而 Python 后端 `hermes_constants._get_platform_default_hermes_home()` 在 Windows 默认 `%LOCALAPPDATA%\hermes`——导致桌面"Open logs"打开空目录、`get_recent_logs` 读不到日志。已对齐为 Windows `%LOCALAPPDATA%\hermes`（HERMES_HOME 环境变量优先），非 Windows `~/.hermes`。
 
+**前端改走 loopback HTTP 伺服（2026-08-07，替代 tauri:// 自定义协议，解决 release 版"Could not connect to Hermes gateway"）：**
+- **根因**：打包后 renderer 从 `tauri://localhost` 加载，WebView2 映射为 `http://tauri.localhost`，WS 握手携带该 Origin；后端 DNS-rebinding 白名单（`_LOOPBACK_HOSTS`）不含它 → 403 origin_mismatch → 前端 boot 失败。dev 模式（vite 在 localhost）天然放行所以全程没暴露；Electron 的 `file://` 走非 web 来源豁免所以也从未触发。仓库 `web_server.py` 的白名单修复（tauri.localhost）虽已提交分支，但**任何已分发/旧版后端都没有它**——在线安装路线不可依赖。
+- **方案**：不改后端、不依赖后端版本——Rust 内嵌静态服务器（`src/asset_server.rs`，tiny_http+mime_guess，loopback only、防目录穿越、SPA 回退、按类型加 charset），把 `dist/` 挂在 `http://127.0.0.1:<随机端口>`；窗口 URL 改在代码里创建时指向它（`lib.rs`，dev 仍用 devUrl）。WS Origin 变为 `http://127.0.0.1:<port>`——端口剥离后命中 loopback 白名单，**任何版本后端（含未修复的 0.19.0/0.20.0）都放行**（已实测）。`windows.rs` 的 session/instance 弹窗共用同一 `base_url()`，全部窗口同 origin。附带收益：页面不再是"远程安全源"，WebView2 混合内容自动升级不再把 `ws://` 改写成 `wss://`，`tls_proxy.rs` 在本地后端路径彻底不需要（目前本就是未接线死代码）。
+- **ACL 配套（关键坑）**：loopback origin 对 Tauri ACL 是 **remote 上下文**——(1) `capabilities/default.json` 加 `remote.urls: ["http://127.0.0.1:*", "http://localhost:*"]`（URLPattern，端口通配已实测匹配任意端口）；(2) **自定义命令在 remote 上下文默认全拒**（webview/mod.rs：`!is_local && acl.is_none()` → reject），必须建 app 权限清单：`permissions/loopback-commands.json`（68 个桥命令全列，文件结构必须是 `{"permission": [...]}`——顶层单权限对象会被 serde 静默丢弃，是本次最大坑）；(3) capability 里**裸标识符**引用（`"loopback-commands"`，无前缀 = app 清单，`app:` 前缀会落到 core app 插件）；(4) `windows` 列表补 `session-*`/`instance-*` glob（原来只有 main，弹窗 IPC 本就会被拒）。`lib.rs` invoke_handler 上方已加注释：**新命令必须同步进 permissions/loopback-commands.json**。
+- **tauri.conf.json**：`app.windows` 置空（窗口代码化创建）；`bundle.resources: ["../dist"]`（MSI 把 dist 铺到安装目录，`resolve_dist_dir` 先查 resource_dir 再回退 exe 同级——裸 exe 测试时把 dist 拷到 exe 旁即可）。
+- **已验证**：`cargo check` dev+release 双 profile 干净；release exe 实测——asset server 200/SPA 回退/穿越 403/MIME 正确；CDP 实测页面 href=`http://127.0.0.1:<port>/#/`、composer 可见、无失败指示、真实会话列表加载（`e2e/check-loopback-origin.mjs`，绿灯）。
+- **遗留**：MSI 构建（`bundle.resources` 布局 + WiX）未跑；frontendDist 内嵌与 resources 双份体积（~6-10MB 压缩）后续可优化掉内嵌；tls_proxy 死代码待清理或留作远程 wss 场景；上游 `web_server.py` tauri.localhost PR 仍应提交（救其他 tauri:// 消费方），但不再是发布阻塞项。
+
 ## 0. 通用范式（先定三条捷径，可省掉大半工作量）
 
 - **桥垫片**：先写一个 `window.hermesDesktop` 适配层，把 `invoke` 一对一映射到 `@tauri-apps/api/core.invoke`，事件映射到 `listen()`。方法名/签名全部保留，`src/` 下 84 处调用点零改动。

@@ -30,7 +30,8 @@ fn encode_route_segment(raw: &str) -> String {
 }
 
 /// Build the renderer URL for a window. In dev we point at the Vite dev server;
-/// in production we load the bundled asset protocol origin (`http://tauri.localhost`).
+/// in production at the loopback asset server (see `asset_server.rs`) so every
+/// window shares the main window's loopback origin.
 fn build_window_url(app: &AppHandle, session_id: Option<&str>, watch: bool) -> String {
     let query = match (session_id.is_some(), watch) {
         (true, true) => "?win=secondary&watch=1",
@@ -41,21 +42,10 @@ fn build_window_url(app: &AppHandle, session_id: Option<&str>, watch: bool) -> S
         .map(|s| format!("#/{}", encode_route_segment(s)))
         .unwrap_or_default();
 
-    // `dev_url` is always present in tauri.conf.json, so gate on the build
-    // profile (mirroring `generate_context!`'s dev flag) instead of the config
-    // value: a production build that consults `dev_url` would load
-    // `http://localhost:5174` for every session/instance window and die when no
-    // dev server is running. Production always uses the embedded origin.
-    let base = if cfg!(debug_assertions) {
-        app.config()
-            .build
-            .dev_url
-            .clone()
-            .map(|u| u.to_string())
-            .unwrap_or_else(|| "http://tauri.localhost".to_string())
-    } else {
-        "http://tauri.localhost".to_string()
-    };
+    // Dev/prod origin selection lives in `asset_server::base_url` (devUrl in
+    // dev, loopback HTTP in production, asset protocol as fallback) so the
+    // main window and all pop-outs stay on one origin.
+    let base = crate::asset_server::base_url(app);
     let base = base.trim_end_matches('/').to_string();
     format!("{base}/{query}{route}")
 }

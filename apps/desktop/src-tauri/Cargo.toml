@@ -50,6 +50,10 @@ base64 = "0.22"
 rand = "0.10"
 # URL normalization for connection-config remote URLs.
 url = "2"
+# Static-file serving of the renderer over loopback HTTP (asset_server.rs).
+tiny_http = "0.12"
+# Content-Type detection for the loopback asset server.
+mime_guess = "2"
 
 # --- Local TLS proxy (Hermes Desktop) ---
 # WebView2 auto-upgrades `ws://`/`http://` outbound requests from the secure
