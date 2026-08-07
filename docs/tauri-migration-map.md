@@ -41,7 +41,9 @@
 - **ACL 配套（关键坑）**：loopback origin 对 Tauri ACL 是 **remote 上下文**——(1) `capabilities/default.json` 加 `remote.urls: ["http://127.0.0.1:*", "http://localhost:*"]`（URLPattern，端口通配已实测匹配任意端口）；(2) **自定义命令在 remote 上下文默认全拒**（webview/mod.rs：`!is_local && acl.is_none()` → reject），必须建 app 权限清单：`permissions/loopback-commands.json`（68 个桥命令全列，文件结构必须是 `{"permission": [...]}`——顶层单权限对象会被 serde 静默丢弃，是本次最大坑）；(3) capability 里**裸标识符**引用（`"loopback-commands"`，无前缀 = app 清单，`app:` 前缀会落到 core app 插件）；(4) `windows` 列表补 `session-*`/`instance-*` glob（原来只有 main，弹窗 IPC 本就会被拒）。`lib.rs` invoke_handler 上方已加注释：**新命令必须同步进 permissions/loopback-commands.json**。
 - **tauri.conf.json**：`app.windows` 置空（窗口代码化创建）；`bundle.resources: ["../dist"]`（MSI 把 dist 铺到安装目录，`resolve_dist_dir` 先查 resource_dir 再回退 exe 同级——裸 exe 测试时把 dist 拷到 exe 旁即可）。
 - **已验证**：`cargo check` dev+release 双 profile 干净；release exe 实测——asset server 200/SPA 回退/穿越 403/MIME 正确；CDP 实测页面 href=`http://127.0.0.1:<port>/#/`、composer 可见、无失败指示、真实会话列表加载（`e2e/check-loopback-origin.mjs`，绿灯）。
-- **遗留**：MSI 构建（`bundle.resources` 布局 + WiX）未跑；frontendDist 内嵌与 resources 双份体积（~6-10MB 压缩）后续可优化掉内嵌；tls_proxy 死代码待清理或留作远程 wss 场景；上游 `web_server.py` tauri.localhost PR 仍应提交（救其他 tauri:// 消费方），但不再是发布阻塞项。
+- **遗留**：frontendDist 内嵌与 resources 双份体积（~6-10MB 压缩）后续可优化掉内嵌；tls_proxy 死代码待清理或留作远程 wss 场景；上游 `web_server.py` tauri.localhost PR 仍应提交（救其他 tauri:// 消费方），但不再是发布阻塞项。
+
+**MSI 打包修正（2026-08-07，安装版"Could not connect"根因）：** 初版 `"resources": ["../dist"]` 数组格式会把 `../` 映射为安装目录下的 `_up_/dist`，`resolve_dist_dir` 找不到 → 回退 tauri:// → 撞上 wss 混合内容自动升级 + Origin 403 双重墙。修为**对象格式** `"resources": { "../dist": "dist" }`（dist 直接落 `<install>/dist`，wxs 目录树已确认无 `_up_`）；顺带版本号 0.17.0 → 0.18.0（同版本 MSI 无法干净升级，且全机安装需提权——非提权静默装 0.x 同版会 1603/MSI_LUA 拒绝）。0.18.0 MSI 已在多台机器实装验证可用。构建命令固化在 `apps/desktop/Makefile`（本机无 `make`，用 `mingw32-make -C apps/desktop <target>`）。
 
 ## 0. 通用范式（先定三条捷径，可省掉大半工作量）
 
