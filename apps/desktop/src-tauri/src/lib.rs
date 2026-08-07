@@ -74,11 +74,15 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|app, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                // Tear down the managed gateway so it doesn't leak as an orphan.
-                let gw = app.state::<gateway::GatewayState>();
-                gateway::stop_gateway(&gw);
+        .on_window_event(|window, event| {
+            // Tear down the managed gateway when the MAIN window is destroyed —
+            // but not for secondary/session pop-outs: closing a spectate window
+            // must not kill the backend the main window is still talking to.
+            if window.label() == "main" {
+                if let tauri::WindowEvent::Destroyed = event {
+                    let gw = window.state::<gateway::GatewayState>();
+                    gateway::stop_gateway(&gw);
+                }
             }
         })
         // NOTE: the production renderer loads from http://127.0.0.1 (a REMOTE

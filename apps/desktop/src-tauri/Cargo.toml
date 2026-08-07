@@ -1,6 +1,6 @@
 [package]
 name = "hermes-desktop"
-version = "0.18.4"
+version = "0.18.5"
 description = "Native desktop shell for Hermes Agent (Tauri v2)"
 authors = ["Nous Research"]
 edition = "2021"

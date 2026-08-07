@@ -51,8 +51,15 @@ fn build_window_url(app: &AppHandle, session_id: Option<&str>, watch: bool) -> S
 }
 
 /// `hermes:openSessionWindow` — open (or focus) a secondary window for one chat.
+///
+/// MUST be an async command: sync commands run on the main thread, and
+/// building a second webview while the main thread sits inside a WebView2
+/// IPC handler deadlocks (the new window is stuck on about:blank and its
+/// navigator never initializes). The async handler runs on a worker thread
+/// and posts creation back to the main thread — the same conditions the
+/// main window was created under.
 #[tauri::command]
-pub fn open_session_window(
+pub async fn open_session_window(
     app: AppHandle,
     session_id: String,
     opts: Option<SessionWindowOptions>,
@@ -64,24 +71,40 @@ pub fn open_session_window(
 
     let label = format!("session-{}", slug_label(&key));
     // Focus-or-create: never duplicate a window for the same chat.
-    if let Some(win) = app.get_webview_window(&label) {
+    let existing = app.get_webview_window(&label);
+    if let Some(win) = existing {
         let _ = win.show();
         let _ = win.set_focus();
         return Ok(label);
     }
 
     let watch = opts.map(|o| o.watch).unwrap_or(false);
-    let url = WebviewUrl::External(build_window_url(&app, Some(&key), watch).parse().unwrap());
+    let url = build_window_url(&app, Some(&key), watch);
 
-    let win = WebviewWindowBuilder::new(&app, &label, url)
-        .title("Hermes")
-        .inner_size(SESSION_WINDOW_MIN_WIDTH, SESSION_WINDOW_MIN_HEIGHT)
-        .min_inner_size(SESSION_WINDOW_MIN_WIDTH, SESSION_WINDOW_MIN_HEIGHT)
-        .resizable(true)
-        .build()
-        .map_err(|e| e.to_string())?;
+    let label_for_build = label.clone();
+    let app_for_build = app.clone();
+    app.run_on_main_thread(move || {
+        let parsed = match url.parse() {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                eprintln!("[windows] bad session window url {url:?}: {err}");
+                return;
+            }
+        };
+        let win_label = label_for_build.clone();
+        let result = WebviewWindowBuilder::new(&app_for_build, &label_for_build, WebviewUrl::External(parsed))
+            .title("Hermes")
+            .inner_size(SESSION_WINDOW_MIN_WIDTH, SESSION_WINDOW_MIN_HEIGHT)
+            .min_inner_size(SESSION_WINDOW_MIN_WIDTH, SESSION_WINDOW_MIN_HEIGHT)
+            .resizable(true)
+            .build();
+        if let Err(err) = result {
+            eprintln!("[windows] failed to build session window {win_label}: {err}");
+        }
+    })
+    .map_err(|e| e.to_string())?;
 
-    Ok(win.label().to_string())
+    Ok(label)
 }
 
 #[derive(serde::Deserialize)]
@@ -92,19 +115,37 @@ pub struct SessionWindowOptions {
 }
 
 /// `hermes:openWindow` — open a full app "instance" window (⌘⇧N / New Window).
+/// Async for the same re-entrancy reason as `open_session_window`.
 #[tauri::command]
-pub fn open_window(app: AppHandle) -> Result<String, String> {
+pub async fn open_window(app: AppHandle) -> Result<String, String> {
     let label = format!("instance-{}", instance_counter());
-    let url = WebviewUrl::External(build_window_url(&app, None, false).parse().unwrap());
+    let url = build_window_url(&app, None, false);
 
-    let win = WebviewWindowBuilder::new(&app, &label, url)
-        .title("Hermes")
-        .inner_size(INSTANCE_WINDOW_WIDTH, INSTANCE_WINDOW_HEIGHT)
-        .resizable(true)
-        .build()
-        .map_err(|e| e.to_string())?;
+    // Same re-entrancy rule as open_session_window: never build a webview
+    // from inside an IPC handler (main-thread deadlock, about:blank window).
+    let label_for_build = label.clone();
+    let app_for_build = app.clone();
+    app.run_on_main_thread(move || {
+        let parsed = match url.parse() {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                eprintln!("[windows] bad instance window url {url:?}: {err}");
+                return;
+            }
+        };
+        let win_label = label_for_build.clone();
+        let result = WebviewWindowBuilder::new(&app_for_build, &label_for_build, WebviewUrl::External(parsed))
+            .title("Hermes")
+            .inner_size(INSTANCE_WINDOW_WIDTH, INSTANCE_WINDOW_HEIGHT)
+            .resizable(true)
+            .build();
+        if let Err(err) = result {
+            eprintln!("[windows] failed to build instance window {win_label}: {err}");
+        }
+    })
+    .map_err(|e| e.to_string())?;
 
-    Ok(win.label().to_string())
+    Ok(label)
 }
 
 /// Short, filesystem-safe label from an arbitrary session id.
