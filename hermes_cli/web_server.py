@@ -368,11 +368,12 @@ _REVEAL_WINDOW_SECONDS = 30
 
 # CORS: restrict to localhost origins only.  The web UI is intended to run
 # locally; binding to 0.0.0.0 with allow_origins=["*"] would let any website
-# read/modify config and secrets.
+# read/modify config and secrets.  Tauri desktop origins (tauri://localhost,
+# http://tauri.localhost) are also allowed for the native shell.
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|tauri\.localhost)(:\d+)?$|^tauri://localhost$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -464,8 +465,15 @@ def _require_token(request: Request) -> None:
 # checks because the browser now considers evil.test and our dashboard
 # "same origin". Validating the Host header at the app layer rejects any
 # request whose Host isn't one we bound for. See GHSA-ppp5-vxwm-4cf7.
+#
+# ``tauri.localhost`` is the virtual host the Tauri v2 desktop shell
+# (WebView2) uses for its embedded pages; its WebSocket upgrades carry
+# ``Origin: http://tauri.localhost`` and are refused (HTTP 403) without it.
+# Same trust posture as the other loopback names: ``.localhost`` never
+# resolves off-box (RFC 6761), the WS credential check still applies, and
+# the desktop shell is the same operator trust domain as the local browser.
 _LOOPBACK_HOST_VALUES: frozenset = frozenset({
-    "localhost", "127.0.0.1", "::1",
+    "localhost", "127.0.0.1", "::1", "tauri.localhost",
 })
 
 
@@ -14502,7 +14510,14 @@ async def _legacy_pump(ws: "WebSocket", bridge) -> None:
 _VALID_CHANNEL_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 # Starlette's TestClient reports the peer as "testclient"; treat it as
 # loopback so tests don't need to rewrite request scope.
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
+# ``tauri.localhost`` is the Origin/Host the Tauri v2 desktop shell (WebView2)
+# sends on embedded-resource pages (http://tauri.localhost). Without it the
+# WS upgrade is rejected with origin_mismatch and the desktop chat can never
+# connect — the CORS middleware covers HTTP only; WebSocket upgrades run
+# their own Host/Origin guard (_ws_host_origin_is_allowed) that mirrors this
+# set. Same security posture as the other loopback names: .localhost never
+# resolves off-box (RFC 6761) and the WS credential check still applies.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient", "tauri.localhost"})
 
 
 def _ws_client_reason(ws: "WebSocket") -> Optional[str]:
