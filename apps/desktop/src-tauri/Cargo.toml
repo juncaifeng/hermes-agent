@@ -1,0 +1,79 @@
+[package]
+name = "hermes-desktop"
+version = "0.17.0"
+description = "Native desktop shell for Hermes Agent (Tauri v2)"
+authors = ["Nous Research"]
+edition = "2021"
+rust-version = "1.77.2"
+
+# See https://tauri.app/plugins/ for plugin crates.
+[lib]
+name = "hermes_lib"
+# Desktop-only: an rlib is enough for the binary to link against. Do NOT add
+# `cdylib` — on MinGW it links a DLL that exports every symbol and blows the
+# PE export-table limit (`export ordinal too large`). `cdylib`/`staticlib`
+# are only needed for mobile targets.
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# `custom-protocol` is REQUIRED for production builds: without it the build
+# script sets `dev = true`, the release exe loads `devUrl` (localhost:5174)
+# instead of the embedded frontend, and the installed MSI dies with
+# "Desktop IPC bridge is unavailable" when no dev server is running.
+tauri = { version = "2", features = ["custom-protocol"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# --- HTTP (Hermes Desktop migration) ---
+# Used by the `api` REST proxy (forwards to `hermes serve`), `fetchLinkTitle`,
+# and the VS Code marketplace fetches.
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "multipart",
+  "rustls-tls",
+  "stream",
+] }
+# Blocking FS helpers for the shell commands (readDir / readFileText / …).
+open = "5"
+# Clipboard read/write (Electron clipboard parity; pure-Rust, no plugin).
+arboard = "3"
+# Move-to-recycle-bin for trashPath (Windows/Unix).
+trash = "5"
+# <title> extraction for fetchLinkTitle.
+regex = "1"
+# Data-URL encoding for readFileDataUrl.
+base64 = "0.22"
+# Random dashboard session token (pinned via HERMES_DASHBOARD_SESSION_TOKEN).
+rand = "0.10"
+# URL normalization for connection-config remote URLs.
+url = "2"
+
+# --- Local TLS proxy (Hermes Desktop) ---
+# WebView2 auto-upgrades `ws://`/`http://` outbound requests from the secure
+# `tauri.localhost` page to TLS (Mixed Content Autoupgrade); the plain-HTTP
+# backend cannot answer a TLS handshake. We terminate TLS locally (self-signed
+# cert, `--ignore-certificate-errors` in tauri.conf.json) and forward the
+# decrypted bytes to the plaintext `hermes serve` port, so the renderer can use
+# `wss://`/`https://` URLs against a TLS-capable endpoint.
+tokio = { version = "1", features = ["rt", "net", "io-util", "macros"] }
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = "0.13"
+
+# --- Plugins (Hermes Desktop migration) ---
+# Only the core set is enabled for the initial skeleton; the rest
+# (updater, deep-link, power, etc.) are added in later increments.
+tauri-plugin-shell = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-store = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

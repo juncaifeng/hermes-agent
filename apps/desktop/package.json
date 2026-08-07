@@ -88,6 +88,7 @@
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query": "5.101.2",
     "@tanstack/react-virtual": "3.14.6",
+    "@tauri-apps/api": "^2.11.1",
     "@vscode/codicons": "0.0.45",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-serialize": "0.14.0",
@@ -137,6 +138,7 @@
   "devDependencies": {
     "@electron/rebuild": "4.2.0",
     "@playwright/test": "1.58.2",
+    "@tauri-apps/cli": "^2.11.4",
     "@testing-library/dom": "10.4.1",
     "@testing-library/react": "16.3.2",
     "@types/d3-force": "3.0.10",

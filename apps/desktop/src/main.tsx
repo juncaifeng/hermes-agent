@@ -1,4 +1,7 @@
 import './styles.css'
+// Side-effect: installs the `window.hermesDesktop` bridge under Tauri (no-op in
+// a plain-browser / Electron context). MUST precede the app code that calls it.
+import './desktop-bridge'
 // Side-effect: reports in-flight turns to the main process for the quit guard.
 import './store/active-work'
 // Side-effect: mirrors the machine's AC/battery state for poll demotion.

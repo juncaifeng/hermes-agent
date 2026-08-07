@@ -1,0 +1,21 @@
+# Project-level crates.io mirror (rsproxy.cn) so `cargo build` works from
+# networks where the official crates.io index is unreachable. This only
+# affects this project — it does not touch the user's global config.
+# See also: https://rsproxy.cn/
+
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[registries.rsproxy]
+index = "sparse+https://rsproxy.cn/index/"
+
+[net]
+git-fetch-with-cli = true
+
+[http]
+check-revoke = false
+timeout = 180
+multiplexing = false

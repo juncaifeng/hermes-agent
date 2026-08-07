@@ -366,11 +366,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // What actually gets painted (matches the `.dark` class applyTheme toggles).
   const renderedMode = useMemo(() => renderedModeFor(activeTheme.colors, resolvedMode), [activeTheme, resolvedMode])
 
-  useEffect(() => applyTheme(activeTheme, resolvedMode), [activeTheme, resolvedMode])
+  useEffect(() => {
+    applyTheme(activeTheme, resolvedMode)
+  }, [activeTheme, resolvedMode])
 
   // Keep the native window appearance pinned to the app theme (vibrancy
   // material, titlebar, new-window pre-paint background).
-  useEffect(() => syncNativeTheme(mode, renderedMode), [mode, renderedMode])
+  useEffect(() => {
+    syncNativeTheme(mode, renderedMode)
+  }, [mode, renderedMode])
 
   // Assign to whichever profile is live right now (read fresh so the callbacks
   // stay stable across profile switches).
