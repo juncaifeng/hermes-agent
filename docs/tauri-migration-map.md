@@ -50,6 +50,7 @@
 - `filePathForTarget` 的 `file://` 解码在 Windows 产生 `/E:/...` 前导斜杠路径（URL 语法的一部分，不是路径的一部分）→ Rust `fs::read` 报 `os error 123`（预览不可用）。修为对盘符路径剥前导斜杠（`/^\/[A-Za-z]:[\\/]/`）。该路径来自 url-only 的 preview target（聊天内文件链接/工具结果）；Electron 时代由 normalizePreviewTarget 归一化掩盖了它。
 - 另注意：`npm run build` 会把 Electron 专用的 node-pty 塞进 `dist/node_modules`，Tauri 拒绝打包含 node_modules 的 frontendDist——`Makefile msi` 已内置剥除。
 - 0.18.3（2026-08-07）：`localPreviewTarget` 补齐 Windows 路径形态——file:// 解码剥盘符前导斜杠；`E:\`/`E:/`/UNC 判定为绝对路径不再误拼 cwd（原先 `E:\x` 被当相对路径拼出 `cwd/E:\x` 垃圾路径，同样 os error 123）。新增 `src/lib/local-preview.test.ts` 六项形态契约测试（vitest 全过）。后续可选：把 `normalizePreviewTarget` 实现为真正的 Rust 命令（含 stat/二进制嗅探），彻底消除对渲染端回退的依赖。
+- 0.18.4（2026-08-07）：**冷 resume 不同步工作区 cwd**——`resumeSession` 只在暖缓存路径 `setCurrentCwd(cachedViewState.cwd)`；冷路径（无缓存，典型：app 重启后首次切换到另一项目的会话）只 `patchSessionWorkspace`/`updateSessionState`，从不动 `$currentCwd`，导致文件树/git review 停在旧项目。修为冷路径同步 `runtimeInfo?.cwd || stored?.cwd`（与暖路径同源）。附 `use-session-actions.test.tsx` 两个用例（runtime info 有/无 cwd 两种，42 全绿）。注意：这是 Electron 时代就存在的上游缺口，非 Tauri 回归。
 
 ## 0. 通用范式（先定三条捷径，可省掉大半工作量）
 

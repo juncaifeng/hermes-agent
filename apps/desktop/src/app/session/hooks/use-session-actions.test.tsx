@@ -1684,3 +1684,82 @@ describe('selectSidebarItem', () => {
     expect(revealTreePane).toHaveBeenCalledWith('workspace')
   })
 })
+
+describe('resumeSession cold-resume workspace sync', () => {
+  afterEach(() => {
+    cleanup()
+    setActiveSessionId(null)
+    setResumeFailedSessionId(null)
+    setMessages([])
+    setSessions([])
+    setCurrentCwd('')
+    vi.restoreAllMocks()
+  })
+
+  async function runColdResume(requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>) {
+    let resume: ((storedSessionId: string, replaceRoute?: boolean) => Promise<unknown>) | null = null
+    render(<ResumeHarness onReady={r => (resume = r)} requestGateway={requestGateway} />)
+    await waitFor(() => expect(resume).not.toBeNull())
+    await resume!('stored-1', true)
+  }
+
+  const storedMessages = [
+    { content: 'q', role: 'user', timestamp: 1 },
+    { content: 'a', role: 'assistant', timestamp: 2 }
+  ]
+
+  it('switches the live workspace cwd to the cold-resumed session project', async () => {
+    // Previous session was in project-1; cold-resuming (no warm cache) a
+    // session that lives in project-2 must move $currentCwd, or the file tree
+    // and git review keep showing project-1.
+    setSessions([storedSession({ id: 'stored-1', cwd: '/project-2', message_count: 2 })])
+    setCurrentCwd('/project-1')
+
+    vi.mocked(getSessionMessages).mockResolvedValue({ messages: storedMessages, session_id: 'stored-1' } as never)
+
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.resume') {
+        return {
+          session_id: 'runtime-1',
+          session_key: 'stored-1',
+          resumed: 'stored-1',
+          message_count: storedMessages.length,
+          messages: storedMessages,
+          info: { cwd: '/project-2' }
+        } as never
+      }
+
+      return {} as never
+    })
+
+    await runColdResume(requestGateway)
+
+    expect($currentCwd.get()).toBe('/project-2')
+  })
+
+  it('falls back to the stored row cwd when runtime info carries none', async () => {
+    setSessions([storedSession({ id: 'stored-1', cwd: '/project-2', message_count: 2 })])
+    setCurrentCwd('/project-1')
+
+    vi.mocked(getSessionMessages).mockResolvedValue({ messages: storedMessages, session_id: 'stored-1' } as never)
+
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.resume') {
+        return {
+          session_id: 'runtime-1',
+          session_key: 'stored-1',
+          resumed: 'stored-1',
+          message_count: storedMessages.length,
+          messages: storedMessages,
+          info: {}
+        } as never
+      }
+
+      return {} as never
+    })
+
+    await runColdResume(requestGateway)
+
+    expect($currentCwd.get()).toBe('/project-2')
+  })
+})

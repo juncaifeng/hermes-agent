@@ -982,6 +982,12 @@ export function useSessionActions({
 
         patchSessionWorkspace(storedSessionId, runtimeInfo?.cwd)
 
+        // Cold-resume cwd sync. The warm-cache path restores the live cwd via
+        // cachedViewState.cwd, but a cold target never had one — without this
+        // the workspace surfaces that key off $currentCwd (file tree, git
+        // review) keep showing the PREVIOUS session's project after the switch.
+        setCurrentCwd(runtimeInfo?.cwd || stored?.cwd?.trim() || '')
+
         updateSessionState(
           resumed.session_id,
           state => ({
