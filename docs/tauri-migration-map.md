@@ -45,6 +45,11 @@
 
 **MSI 打包修正（2026-08-07，安装版"Could not connect"根因）：** 初版 `"resources": ["../dist"]` 数组格式会把 `../` 映射为安装目录下的 `_up_/dist`，`resolve_dist_dir` 找不到 → 回退 tauri:// → 撞上 wss 混合内容自动升级 + Origin 403 双重墙。修为**对象格式** `"resources": { "../dist": "dist" }`（dist 直接落 `<install>/dist`，wxs 目录树已确认无 `_up_`）；顺带版本号 0.17.0 → 0.18.0（同版本 MSI 无法干净升级，且全机安装需提权——非提权静默装 0.x 同版会 1603/MSI_LUA 拒绝）。0.18.0 MSI 已在多台机器实装验证可用。构建命令固化在 `apps/desktop/Makefile`（本机无 `make`，用 `mingw32-make -C apps/desktop <target>`）。
 
+**渲染端两个 shim/路径修复（2026-08-07，0.18.1/0.18.2）：**
+- `normalizePreviewTarget` shim 原样返回输入字符串（truthy 谎言）→ 渲染端跳过 `localPreviewTarget` 回退，裸字符串被当 PreviewTarget → preview 面板 `Cannot read properties of undefined (reading 'split')`。修为返回 `null`（类型本就允许），分类交还渲染端本地回退。教训：no-op shim 的返回形状必须**诚实**——truthy 占位值比显式拒绝更危险。
+- `filePathForTarget` 的 `file://` 解码在 Windows 产生 `/E:/...` 前导斜杠路径（URL 语法的一部分，不是路径的一部分）→ Rust `fs::read` 报 `os error 123`（预览不可用）。修为对盘符路径剥前导斜杠（`/^\/[A-Za-z]:[\\/]/`）。该路径来自 url-only 的 preview target（聊天内文件链接/工具结果）；Electron 时代由 normalizePreviewTarget 归一化掩盖了它。
+- 另注意：`npm run build` 会把 Electron 专用的 node-pty 塞进 `dist/node_modules`，Tauri 拒绝打包含 node_modules 的 frontendDist——`Makefile msi` 已内置剥除。
+
 ## 0. 通用范式（先定三条捷径，可省掉大半工作量）
 
 - **桥垫片**：先写一个 `window.hermesDesktop` 适配层，把 `invoke` 一对一映射到 `@tauri-apps/api/core.invoke`，事件映射到 `listen()`。方法名/签名全部保留，`src/` 下 84 处调用点零改动。

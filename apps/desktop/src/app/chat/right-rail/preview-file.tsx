@@ -174,7 +174,15 @@ function filePathForTarget(target: PreviewTarget) {
   try {
     const url = new URL(target.url)
 
-    return url.protocol === 'file:' ? decodeURIComponent(url.pathname) : target.url
+    if (url.protocol === 'file:') {
+      const decoded = decodeURIComponent(url.pathname)
+      // Windows file URLs parse as `/E:/...` — the leading slash is part of
+      // the URL grammar, not the path, and CreateFile rejects `/E:` with
+      // ERROR_INVALID_NAME (os error 123). Strip it for drive-letter paths.
+      return /^\/[A-Za-z]:[\\/]/.test(decoded) ? decoded.slice(1) : decoded
+    }
+
+    return target.url
   } catch {
     return target.url
   }
