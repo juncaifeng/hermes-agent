@@ -131,7 +131,11 @@ if (isTauri) {
     repairBootstrap: () => invoke<any>('repair_bootstrap'),
     cancelBootstrap: () => invoke<any>('cancel_bootstrap'),
     claimAmbientCue: () => Promise.resolve({ ok: true }),
-    normalizePreviewTarget: (target: string) => Promise.resolve(target),
+    // Null = "no opinion": the renderer falls back to its own localPreviewTarget
+    // classification. MUST NOT echo the raw string — it's truthy, so the caller
+    // would skip the fallback and treat a bare path string as a PreviewTarget
+    // (tabLabelFor then crashes on .split of undefined).
+    normalizePreviewTarget: () => Promise.resolve(null),
     watchPreviewFile: () => Promise.resolve({ ok: true }),
     watchDirectory: () => Promise.resolve({ ok: true }),
     stopPreviewFileWatch: () => Promise.resolve({ ok: true }),

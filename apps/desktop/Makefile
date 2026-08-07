@@ -39,6 +39,10 @@ exe: stage-dist ## exe + staged dist, runnable directly from target/release
 	@echo "run: $(RELEASE)/hermes-desktop.exe"
 
 msi: ## full MSI bundle via WiX (resources: dist/ lands at <install>/dist)
+	## npm run build stages node-pty into dist/node_modules for the ELECTRON
+	## build; Tauri refuses to bundle a frontendDist containing node_modules
+	## (and it would bloat the resources copy), so strip it first.
+	rm -rf dist/node_modules
 	npx tauri build --bundles msi
 	@echo "MSI: $(MSI)"
 
