@@ -938,6 +938,13 @@ export interface SkillInfo {
   usage?: number
   /** 'agent' = learned/local (editable), 'bundled' = ships with Hermes, 'hub' = installed. */
   provenance?: 'agent' | 'bundled' | 'hub'
+  /**
+   * Absolute path of the scan root this skill was discovered under — the
+   * built-in `<hermes_home>/skills` or one of `skills.external_dirs`.
+   * Distinct from `provenance` (who authored it); used for directory
+   * filtering. Absent on older backends.
+   */
+  source_dir?: string
 }
 
 export interface ToolsetInfo {

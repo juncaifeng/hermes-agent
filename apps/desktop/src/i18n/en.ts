@@ -350,7 +350,32 @@ export const en: Translations = {
       about: 'About',
       billing: 'Billing',
       notifications: 'Notifications',
-      plugins: 'Plugins'
+      plugins: 'Plugins',
+      skillsDirs: 'Skill Directories'
+    },
+    skillsDirs: {
+      title: 'Skill directories',
+      blurb: 'Directories Hermes scans for skills. Additional directories extend the built-in one.',
+      count: n => `+${n} additional`,
+      builtinBadge: 'Built-in (writable)',
+      add: 'Add directory…',
+      addPickerTitle: 'Choose a skills directory',
+      open: 'Open',
+      remove: 'Remove',
+      missingBadge: 'Missing',
+      cleanupMissing: 'Remove missing directories',
+      empty: 'No additional directories configured.',
+      added: dir => `Added ${dir} — applies to new sessions.`,
+      removed: dir => `Removed ${dir} — applies to new sessions. Nothing was deleted from disk.`,
+      cleanedUp: n => `Removed ${n} missing ${n === 1 ? 'directory' : 'directories'}.`,
+      addDuplicate: 'That directory is already in the list.',
+      addBuiltinConflict: 'That directory resolves to the built-in skills directory.',
+      addNotFound: 'Directory not found.',
+      saveFailed: 'Failed to save skill directories',
+      noteReadOnly:
+        'Additional directories are read-only — new skills Hermes writes always go to the built-in directory.',
+      noteNewSessions: 'Changes apply to new sessions; ongoing conversations are unaffected.',
+      noteTrust: 'Adding a directory trusts its contents as a skill source.'
     },
     plugins: {
       title: 'Desktop plugins',
@@ -1022,6 +1047,9 @@ export const en: Translations = {
     sortAlpha: 'A–Z',
     sortMostUsedDesc: '↓ Most used',
     sortLeastUsedAsc: '↑ Least used',
+    dirFilter: 'Filter by directory',
+    dirFilterAll: 'All directories',
+    dirFilterBuiltin: 'Built-in',
     enableAll: 'Enable all',
     disableAll: 'Disable all',
     disableUnused: 'Disable unused',

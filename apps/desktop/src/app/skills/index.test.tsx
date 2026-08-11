@@ -3,10 +3,19 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type * as ReactRouterDom from 'react-router'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as HermesApi from '@/hermes'
 import { queryClient } from '@/lib/query-client'
+
+// Radix Select calls scrollIntoView on its items when the content opens; jsdom
+// doesn't implement it (nor hasPointerCapture / releasePointerCapture), so stub
+// them to let the directory-filter dropdown open in tests.
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn()
+  Element.prototype.hasPointerCapture = vi.fn(() => false)
+  Element.prototype.releasePointerCapture = vi.fn()
+})
 
 const getSkills = vi.fn()
 const getToolsets = vi.fn()
@@ -15,6 +24,8 @@ const setToolsetEnabled = vi.fn()
 const getToolsetConfig = vi.fn()
 const selectToolsetProvider = vi.fn()
 const getUsageAnalytics = vi.fn()
+const getStatus = vi.fn()
+const getHermesConfigRecord = vi.fn()
 
 // Partial mock: keep the real module (SkillsView pulls in @/store/profile,
 // whose import-time subscription calls setApiRequestProfile) and stub only the
@@ -27,7 +38,9 @@ vi.mock('@/hermes', async importOriginal => ({
   setToolsetEnabled: (name: string, enabled: boolean) => setToolsetEnabled(name, enabled),
   getToolsetConfig: (name: string) => getToolsetConfig(name),
   selectToolsetProvider: (toolset: string, provider: string) => selectToolsetProvider(toolset, provider),
-  getUsageAnalytics: (days: number) => getUsageAnalytics(days)
+  getUsageAnalytics: (days: number) => getUsageAnalytics(days),
+  getStatus: () => getStatus(),
+  getHermesConfigRecord: () => getHermesConfigRecord()
 }))
 
 // Notifications hit nanostores/timers we don't care about here.
@@ -58,14 +71,14 @@ function toolset(overrides: Record<string, unknown> = {}) {
   }
 }
 
-async function renderSkills() {
+async function renderSkills(route = '/skills?tab=toolsets') {
   const { SkillsView } = await import('./index')
   let result: ReturnType<typeof render>
   await act(async () => {
     result = render(
       // SkillsView reads skills/toolsets via useQuery, so it needs a provider.
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={['/skills?tab=toolsets']}>
+        <MemoryRouter initialEntries={[route]}>
           <SkillsView />
         </MemoryRouter>
       </QueryClientProvider>
@@ -81,6 +94,8 @@ beforeEach(() => {
   setToolsetEnabled.mockResolvedValue({ ok: true, name: 'web', enabled: false })
   getToolsetConfig.mockResolvedValue({ has_category: true, active_provider: null, providers: [] })
   getUsageAnalytics.mockResolvedValue({ tools: [] })
+  getStatus.mockResolvedValue({ hermes_home: '/home/u/.hermes' })
+  getHermesConfigRecord.mockResolvedValue({})
 })
 
 afterEach(() => {
@@ -153,5 +168,70 @@ describe('SkillsView toolset management', () => {
     // Internal route change into the Models section with the aux slot target —
     // consumed by ModelSettings' deep-link highlight. Never an external URL.
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/settings?tab=config:model&aux=vision'))
+  })
+})
+
+describe('SkillsView directory filter', () => {
+  const BUILTIN = '/home/u/.hermes/skills'
+
+  function skill(overrides: Record<string, unknown> = {}) {
+    return { name: 'alpha', description: 'd', category: 'general', enabled: true, ...overrides }
+  }
+
+  beforeEach(() => {
+    getSkills.mockResolvedValue([
+      skill({ name: 'alpha', source_dir: BUILTIN }),
+      skill({ name: 'beta', source_dir: '/ext/team' }),
+      // Legacy row: older backends never sent source_dir.
+      skill({ name: 'gamma' })
+    ])
+    getHermesConfigRecord.mockResolvedValue({ skills: { external_dirs: ['/ext/team'] } })
+  })
+
+  it('stays hidden when no external directories are configured', async () => {
+    getHermesConfigRecord.mockResolvedValue({})
+
+    await renderSkills('/skills?tab=skills')
+    await screen.findByRole('switch', { name: 'alpha' })
+
+    expect(screen.queryByRole('combobox', { name: 'Filter by directory' })).toBeNull()
+  })
+
+  it('offers all / built-in / each external directory, and writes the choice to the URL', async () => {
+    await renderSkills('/skills?tab=skills')
+    await screen.findByRole('switch', { name: 'alpha' })
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Filter by directory' }))
+
+    expect(await screen.findByRole('option', { name: 'All directories' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Built-in' })).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: '/ext/team' }))
+    })
+
+    // The selection is a route param (like the tab), so it survives a refresh.
+    await waitFor(() =>
+      expect(navigateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ search: expect.stringContaining(`dir=${encodeURIComponent('/ext/team')}`) }),
+        expect.objectContaining({ replace: true })
+      )
+    )
+  })
+
+  it('pre-filters the list from the dir URL param', async () => {
+    await renderSkills(`/skills?tab=skills&dir=${encodeURIComponent('/ext/team')}`)
+
+    await screen.findByRole('switch', { name: 'beta' })
+    expect(screen.queryByRole('switch', { name: 'alpha' })).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'gamma' })).toBeNull()
+  })
+
+  it('treats skills without source_dir (older backend) as built-in', async () => {
+    await renderSkills('/skills?tab=skills&dir=builtin')
+
+    await screen.findByRole('switch', { name: 'alpha' })
+    expect(screen.getByRole('switch', { name: 'gamma' })).toBeTruthy()
+    expect(screen.queryByRole('switch', { name: 'beta' })).toBeNull()
   })
 })

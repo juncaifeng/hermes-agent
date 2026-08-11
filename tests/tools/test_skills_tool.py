@@ -251,6 +251,29 @@ class TestFindAllSkills:
         assert [s["name"] for s in skills] == ["knowledge-brain"]
         assert skills[0]["category"] == "linked"
 
+    def test_source_dir_tags_each_skill_with_its_scan_root(self, tmp_path):
+        """Every discovered skill carries the scan root it was found under —
+        the built-in skills dir or the external dir — so management surfaces
+        (/api/skills) can group/filter by source directory."""
+        local_dir = tmp_path / "local"
+        external_dir = tmp_path / "external"
+        local_dir.mkdir()
+        external_dir.mkdir()
+        _make_skill(local_dir, "local-skill")
+        _make_skill(external_dir, "external-skill")
+
+        with (
+            patch("tools.skills_tool.SKILLS_DIR", local_dir),
+            patch(
+                "agent.skill_utils.get_external_skills_dirs",
+                return_value=[external_dir],
+            ),
+        ):
+            skills = {s["name"]: s for s in _find_all_skills()}
+
+        assert skills["local-skill"]["source_dir"] == str(local_dir)
+        assert skills["external-skill"]["source_dir"] == str(external_dir)
+
 
 # ---------------------------------------------------------------------------
 # skills_list
@@ -294,6 +317,18 @@ class TestSkillsList:
         assert result["count"] == 1
         assert result["categories"] == ["linked"]
         assert result["skills"][0]["name"] == "knowledge-brain"
+
+    def test_model_facing_payload_omits_source_dir(self, tmp_path):
+        """skills_list output stays minimal for the model — source_dir is a
+        management-surface field (/api/skills) and must not leak into the
+        per-call tool payload."""
+        with patch("tools.skills_tool.SKILLS_DIR", tmp_path):
+            _make_skill(tmp_path, "skill-a")
+            result = json.loads(skills_list())
+
+        assert result["success"] is True
+        assert result["count"] == 1
+        assert "source_dir" not in result["skills"][0]
 
 
 # ---------------------------------------------------------------------------

@@ -9,11 +9,13 @@ import { CodeEditor } from '@/components/chat/code-editor'
 import { PageLoader } from '@/components/page-loader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CountSkeleton } from '@/components/ui/skeleton'
 import {
   editLearningNode,
   getLearningNode,
   getSkills,
+  getStatus,
   getToolsets,
   getUsageAnalytics,
   setSkillEnabled,
@@ -21,8 +23,17 @@ import {
 } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { isDesktopToolsetVisible } from '@/lib/desktop-toolsets'
+import { displayPath } from '@/lib/display-path'
 import { compactNumber } from '@/lib/format'
 import { queryClient, writeCache } from '@/lib/query-client'
+import {
+  builtinSkillsDir,
+  dirIdentityKey,
+  externalSourceDirs,
+  homeFromHermesHome,
+  matchesSourceDir,
+  readExternalDirs
+} from '@/lib/skills-dirs'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { normalize } from '@/lib/text'
 import { useStoreSelector } from '@/lib/use-session-slice'
@@ -31,6 +42,7 @@ import { notify, notifyError } from '@/store/notifications'
 import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
 import type { SkillInfo, ToolsetInfo } from '@/types/hermes'
 
+import { useHermesConfigRecord } from '../hooks/use-config-record'
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
@@ -57,7 +69,7 @@ import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { SkillsHub } from './hub'
 import { McpTab } from './mcp-tab'
-import { $skillsSortDesc, $toolsetsSortDesc } from './store'
+import { $skillsSortDesc, $toolsetsSortDesc, SKILLS_QUERY_KEY } from './store'
 
 const SKILLS_MODES = ['skills', 'toolsets', 'mcp', 'hub'] as const
 
@@ -65,7 +77,6 @@ const SKILLS_MODES = ['skills', 'toolsets', 'mcp', 'hub'] as const
 // cached lists instantly (no reload flash) and mount only fires a deduped
 // background refetch. A profile swap globally invalidates (see store/profile),
 // so these plain keys refetch against the new backend automatically.
-const SKILLS_QUERY_KEY = ['skills-list'] as const
 const TOOLSETS_QUERY_KEY = ['toolsets-list'] as const
 
 // Optimistic write-through: toggles/bulk/archive repaint instantly; the next
@@ -201,6 +212,26 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
     staleTime: 0
   })
 
+  // Directory filter: options are data-derived from the backend's resolved
+  // source_dir values (config entries may be unresolvable in the renderer —
+  // `~`, `${VAR}`), and the control only appears when external dirs are
+  // configured at all. Selection lives in the `dir` URL param so it survives
+  // a refresh like the tab does.
+  const { data: statusSnapshot } = useQuery({ queryFn: getStatus, queryKey: ['hermes-status'] })
+  const { data: configRecord } = useHermesConfigRecord()
+
+  const builtinDir = statusSnapshot?.hermes_home ? builtinSkillsDir(statusSnapshot.hermes_home) : ''
+  const builtinKey = builtinDir ? dirIdentityKey(builtinDir) : ''
+  const dirHome = statusSnapshot?.hermes_home ? homeFromHermesHome(statusSnapshot.hermes_home) : ''
+
+  const externalDirs = useMemo(() => (skills ? externalSourceDirs(skills, builtinDir) : []), [builtinDir, skills])
+  const dirParamValues = useMemo(() => ['builtin', ...externalDirs], [externalDirs])
+  const [dirFilter, setDirFilter] = useRouteEnumParam<string>('dir', dirParamValues, '')
+  const showDirFilter =
+    readExternalDirs(configRecord).length > 0 && (skills ?? []).some(skill => Boolean(skill.source_dir))
+  const dirFilterLabel =
+    dirFilter === 'builtin' ? t.skills.dirFilterBuiltin : dirFilter ? displayPath(dirFilter, { home: dirHome }) : ''
+
   const { data: toolsets, isError: toolsetsFailed } = useQuery({
     queryKey: TOOLSETS_QUERY_KEY,
     queryFn: getToolsets,
@@ -278,10 +309,23 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
     setToolCalls(null)
   })
 
-  const visibleSkills = useMemo(
-    () => (skills ? filteredSkills(skills, query, skillsSortDesc) : []),
-    [query, skills, skillsSortDesc]
-  )
+  const visibleSkills = useMemo(() => {
+    const base = skills ? filteredSkills(skills, query, skillsSortDesc) : []
+
+    if (!dirFilter) {
+      return base
+    }
+
+    if (dirFilter === 'builtin') {
+      // Older backends omit source_dir entirely; those skills were found under
+      // the built-in root by definition, so keep them in the built-in bucket.
+      return base.filter(
+        skill => !skill.source_dir || (builtinKey !== '' && dirIdentityKey(skill.source_dir) === builtinKey)
+      )
+    }
+
+    return base.filter(skill => matchesSourceDir(skill, dirFilter))
+  }, [builtinKey, dirFilter, query, skills, skillsSortDesc])
 
   const visibleToolsets = useMemo(
     () => (toolsets ? filteredToolsets(toolsets, query, toolCalls ?? {}, toolsetsSortDesc) : []),
@@ -445,11 +489,12 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
   // internal "toolsets".
   const capabilityEmpty = (noun: string) => {
     const q = query.trim()
+    const activeFilter = q || (noun === 'skills' ? dirFilterLabel : '')
 
     return (
       <div className="flex h-full min-h-0 flex-1">
         <PanelEmpty
-          description={q ? t.skills.emptyNothingMatches(q) : t.skills.emptyNoneAvailable(noun)}
+          description={activeFilter ? t.skills.emptyNothingMatches(activeFilter) : t.skills.emptyNoneAvailable(noun)}
           icon="search"
           title={t.skills.emptyNoneFound(noun)}
         />
@@ -590,7 +635,30 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
             <ListColumn
               header={
                 <ListStrip
-                  left={sortButton(skillsSortDesc, () => $skillsSortDesc.set(!$skillsSortDesc.get()))}
+                  left={
+                    <>
+                      {sortButton(skillsSortDesc, () => $skillsSortDesc.set(!$skillsSortDesc.get()))}
+                      {showDirFilter && (
+                        <Select
+                          onValueChange={value => setDirFilter(value === 'all' ? '' : value)}
+                          value={dirFilter || 'all'}
+                        >
+                          <SelectTrigger aria-label={t.skills.dirFilter} className="max-w-44" size="xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">{t.skills.dirFilterAll}</SelectItem>
+                            <SelectItem value="builtin">{t.skills.dirFilterBuiltin}</SelectItem>
+                            {externalDirs.map(dir => (
+                              <SelectItem key={dir} value={dir}>
+                                {displayPath(dir, { home: dirHome })}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </>
+                  }
                   right={
                     <ListStripMenu
                       items={[

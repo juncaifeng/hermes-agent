@@ -11,6 +11,7 @@ import {
   BarChart3,
   Bell,
   Download,
+  FolderOpen,
   Globe,
   Info,
   Keyboard,
@@ -42,6 +43,7 @@ import { NotificationsSettings } from './notifications-settings'
 import { PluginsSettings } from './plugins-settings'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
 import { SessionsSettings } from './sessions-settings'
+import { SkillsDirsSettings } from './skills-dirs-settings'
 import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
 
 const SETTINGS_VIEWS: readonly SettingsViewId[] = [
@@ -53,6 +55,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   'notifications',
   'billing',
   'plugins',
+  'skills-dirs',
   'sessions',
   'about'
 ]
@@ -244,6 +247,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         onSelect: () => setActiveView('plugins')
       },
       {
+        active: activeView === 'skills-dirs',
+        icon: FolderOpen,
+        id: 'skills-dirs',
+        label: t.settings.nav.skillsDirs,
+        onSelect: () => setActiveView('skills-dirs')
+      },
+      {
         active: activeView === 'sessions',
         icon: Archive,
         id: 'sessions',
@@ -330,6 +340,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             <BillingSettings />
           ) : activeView === 'plugins' ? (
             <PluginsSettings />
+          ) : activeView === 'skills-dirs' ? (
+            <SkillsDirsSettings onConfigSaved={onConfigSaved} />
           ) : (
             <SessionsSettings />
           )}

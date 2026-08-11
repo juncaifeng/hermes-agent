@@ -676,7 +676,7 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
             filters out disabled skills.
 
     Returns:
-        List of skill metadata dicts (name, description, category).
+        List of skill metadata dicts (name, description, category, source_dir).
 
     Results are cached per-session; the cache is invalidated when the scan
     signature changes (dir/category mtimes or the disabled-set) and expires
@@ -759,6 +759,11 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
                     "name": name,
                     "description": description,
                     "category": category,
+                    # Scan root this skill was found under (the built-in
+                    # skills dir or one of skills.external_dirs), as an
+                    # absolute path string. Management surfaces (/api/skills)
+                    # use it to group/filter skills by source directory.
+                    "source_dir": str(scan_dir),
                 })
 
             except (UnicodeDecodeError, PermissionError) as e:
@@ -840,7 +845,12 @@ def skills_list(category: str = None, task_id: str = None) -> str:
         return json.dumps(
             {
                 "success": True,
-                "skills": all_skills,
+                # source_dir serves local management surfaces (/api/skills);
+                # keep it out of the model-facing payload (token cost, and
+                # the model never acts on absolute scan roots).
+                "skills": [
+                    {k: v for k, v in s.items() if k != "source_dir"} for s in all_skills
+                ],
                 "categories": categories,
                 "count": len(all_skills),
                 "hint": "Use skill_view(name) to see full content, tags, and linked files",

@@ -303,6 +303,30 @@ export interface Translations {
       billing: string
       notifications: string
       plugins: string
+      skillsDirs: string
+    }
+    skillsDirs: {
+      title: string
+      blurb: string
+      count: (n: number) => string
+      builtinBadge: string
+      add: string
+      addPickerTitle: string
+      open: string
+      remove: string
+      missingBadge: string
+      cleanupMissing: string
+      empty: string
+      added: (dir: string) => string
+      removed: (dir: string) => string
+      cleanedUp: (n: number) => string
+      addDuplicate: string
+      addBuiltinConflict: string
+      addNotFound: string
+      saveFailed: string
+      noteReadOnly: string
+      noteNewSessions: string
+      noteTrust: string
     }
     plugins: {
       title: string
@@ -889,6 +913,9 @@ export interface Translations {
     sortAlpha: string
     sortMostUsedDesc: string
     sortLeastUsedAsc: string
+    dirFilter: string
+    dirFilterAll: string
+    dirFilterBuiltin: string
     enableAll: string
     disableAll: string
     disableUnused: string
