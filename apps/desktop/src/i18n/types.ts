@@ -327,6 +327,8 @@ export interface Translations {
       noteReadOnly: string
       noteNewSessions: string
       noteTrust: string
+      writeApprovalTitle: string
+      writeApprovalDesc: string
     }
     plugins: {
       title: string
@@ -916,6 +918,27 @@ export interface Translations {
     dirFilter: string
     dirFilterAll: string
     dirFilterBuiltin: string
+    pending: {
+      title: string
+      count: (n: number) => string
+      approve: string
+      reject: string
+      approved: (name: string) => string
+      rejected: (name: string) => string
+      failed: (name: string) => string
+      showDiff: string
+      hideDiff: string
+      autoOrigin: string
+      toast: (n: number) => string
+      toastAction: string
+      actions: Record<'create' | 'delete' | 'edit' | 'patch' | 'remove_file' | 'write_file', string>
+    }
+    feed: {
+      title: string
+      empty: string
+      patches: (n: number) => string
+      states: Record<'active' | 'archived' | 'stale', string>
+    }
     enableAll: string
     disableAll: string
     disableUnused: string

@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 // gets the same behavior — a centered TextTab row on wide viewports that
 // collapses into a dropdown when the header can't fit both search and tabs.
 export interface PageShellTab {
+  /** Attention badge count (red chip) — "this tab needs you". */
+  alert?: number
   id: string
   label: string
   /** Count badge. `null` = still loading (renders a skeleton); `undefined` = no badge. */

@@ -22,8 +22,20 @@ export function tabMetaContent(meta: number | string | null) {
   return meta === null ? <CountSkeleton /> : typeof meta === 'number' ? compactNumber(meta) : meta
 }
 
+// Attention badge (e.g. pending approvals) rendered after the label/meta —
+// red by design: it means "this tab needs you", not a neutral count.
+export function TabAlertChip({ count }: { count: number }) {
+  return (
+    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-(--ui-danger,#f87171) px-1 text-[0.62rem] font-semibold text-white">
+      {count}
+    </span>
+  )
+}
+
 export interface TabDropdownItem {
   active: boolean
+  /** Attention badge count (red chip) — draws the user to this item. */
+  alert?: number
   id: string
   icon?: IconComponent
   /** Indent as a sub-item (flattened nested nav). */
@@ -63,6 +75,7 @@ export function TabDropdown({
           {active?.icon && <TabDropdownIcon icon={active.icon} indent={active.indent} />}
           <span className="min-w-0 truncate">{active?.label}</span>
           {active?.meta !== undefined && <TextTabMeta>{tabMetaContent(active.meta)}</TextTabMeta>}
+          {active?.alert ? <TabAlertChip count={active.alert} /> : null}
           <Codicon className="text-muted-foreground" name="chevron-down" size="0.75rem" />
         </button>
       </DropdownMenuTrigger>
@@ -79,6 +92,7 @@ export function TabDropdown({
               {item.meta !== undefined && (
                 <span className="text-xs text-muted-foreground">{tabMetaContent(item.meta)}</span>
               )}
+              {item.alert ? <TabAlertChip count={item.alert} /> : null}
             </DropdownMenuItem>
           </Fragment>
         ))}
@@ -88,6 +102,8 @@ export function TabDropdown({
 }
 
 export interface ResponsiveTab {
+  /** Attention badge count (red chip) rendered after the meta badge. */
+  alert?: number
   id: string
   label: string
   meta?: number | string | null
@@ -117,6 +133,11 @@ export function ResponsiveTabs({
           <TextTab active={tab.id === value} key={tab.id} onClick={() => onChange(tab.id)}>
             {tab.label}
             {tab.meta !== undefined && <TextTabMeta>{tabMetaContent(tab.meta)}</TextTabMeta>}
+            {tab.alert ? (
+              <TextTabMeta className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-(--ui-danger,#f87171) px-1 font-semibold text-white">
+                {tab.alert}
+              </TextTabMeta>
+            ) : null}
           </TextTab>
         ))}
       </div>
@@ -125,6 +146,7 @@ export function ResponsiveTabs({
           align={align}
           items={tabs.map(tab => ({
             active: tab.id === value,
+            alert: tab.alert,
             id: tab.id,
             label: tab.label,
             meta: tab.meta,

@@ -375,7 +375,10 @@ export const en: Translations = {
       noteReadOnly:
         'Additional directories are read-only — new skills Hermes writes always go to the built-in directory.',
       noteNewSessions: 'Changes apply to new sessions; ongoing conversations are unaffected.',
-      noteTrust: 'Adding a directory trusts its contents as a skill source.'
+      noteTrust: 'Adding a directory trusts its contents as a skill source.',
+      writeApprovalTitle: 'Require approval for skill writes',
+      writeApprovalDesc:
+        'When on, skill writes — including ones from the background self-review — are staged in a pending queue and only take effect after you approve them on the Skills page.'
     },
     plugins: {
       title: 'Desktop plugins',
@@ -1050,6 +1053,34 @@ export const en: Translations = {
     dirFilter: 'Filter by directory',
     dirFilterAll: 'All directories',
     dirFilterBuiltin: 'Built-in',
+    pending: {
+      title: 'Pending approval',
+      count: n => `${n} pending`,
+      approve: 'Approve',
+      reject: 'Reject',
+      approved: name => `Approved ${name} — applies to new sessions.`,
+      rejected: name => `Rejected ${name}. Nothing was written.`,
+      failed: name => `Failed to update ${name}`,
+      showDiff: 'Show diff',
+      hideDiff: 'Hide diff',
+      autoOrigin: 'auto-review',
+      toast: n => `${n} skill ${n === 1 ? 'update' : 'updates'} waiting for approval`,
+      toastAction: 'Review',
+      actions: {
+        create: 'new',
+        edit: 'rewrite',
+        patch: 'patch',
+        write_file: 'write file',
+        remove_file: 'remove file',
+        delete: 'delete'
+      }
+    },
+    feed: {
+      title: 'Learning activity',
+      empty: 'No learning activity yet.',
+      patches: n => `${n} ${n === 1 ? 'patch' : 'patches'}`,
+      states: { active: 'active', stale: 'stale', archived: 'archived' }
+    },
     enableAll: 'Enable all',
     disableAll: 'Disable all',
     disableUnused: 'Disable unused',

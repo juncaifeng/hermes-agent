@@ -106,6 +106,8 @@ import {
   type SidebarNavContribution,
   SKILLS_ROUTE
 } from '../../routes'
+import { useSkillsPendingWatcher } from '../../skills/pending-watcher'
+import { $pendingSkillWriteCount } from '../../skills/store'
 import type { SidebarNavItem } from '../../types'
 
 import { SidebarCronJobsSection } from './cron-jobs-section'
@@ -258,6 +260,11 @@ export function ChatSidebar({
   const { t } = useI18n()
   const s = t.sidebar
   const { pathname } = useLocation()
+  // Ambient poll of the skills write-approval queue (only while the gate is
+  // on); the count drives the Capabilities nav badge below and the /skills
+  // tab badge, and a rising edge raises one toast.
+  useSkillsPendingWatcher()
+  const pendingSkillWrites = useStore($pendingSkillWriteCount)
   // Contributed nav rows (plugins pairing a page with a sidebar entry) render
   // below the built-ins with the same chrome; active = at their route.
   const navContributions = useContributions(SIDEBAR_NAV_AREA)
@@ -1180,6 +1187,11 @@ export function ChatSidebar({
                   >
                     <item.icon className="size-4 shrink-0 text-[color-mix(in_srgb,currentColor_72%,transparent)]" />
                     <span className="min-w-0 flex-1 truncate">{s.nav[item.id] ?? item.label}</span>
+                    {item.id === 'skills' && pendingSkillWrites > 0 && (
+                      <span className="ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-(--ui-danger,#f87171) px-1 text-[0.62rem] font-semibold text-white">
+                        {pendingSkillWrites}
+                      </span>
+                    )}
                     {isNewSession && (
                       <KbdGroup
                         className={cn('ml-auto opacity-55', newSessionKbdFlash && 'opacity-100!')}

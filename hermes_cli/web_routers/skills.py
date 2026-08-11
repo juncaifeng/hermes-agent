@@ -13,6 +13,7 @@ working.
 """
 
 import asyncio  # noqa: F401 — used by handlers
+import json
 import logging
 from typing import Optional  # noqa: F401
 
@@ -488,3 +489,139 @@ async def update_skill_content(body: SkillContentUpdate):
         raise HTTPException(status_code=status, detail=err)
     _clear_skills_prompt_cache()
     return result
+
+
+# ---------------------------------------------------------------------------
+# Skill write-approval (pending queue) + learning-activity feed
+#
+# Thin wrappers over tools/write_approval.py (the same pending store the CLI
+# `/skills pending|approve|reject|diff` handlers drive) and
+# tools/skill_usage.py. No business logic here — stage/replay/discard all live
+# in those modules.
+# ---------------------------------------------------------------------------
+
+
+def _pending_summary(rec: dict) -> dict:
+    payload = rec.get("payload", {})
+    return {
+        "id": rec.get("id", ""),
+        "action": rec.get("action", ""),
+        "name": payload.get("name", ""),
+        "gist": rec.get("summary", ""),
+        "origin": rec.get("origin", "foreground"),
+        "created_at": rec.get("created_at", 0),
+    }
+
+
+@router.get("/api/skills/pending")
+async def list_pending_skill_writes(profile: Optional[str] = None):
+    """List staged skill writes awaiting approval, oldest first."""
+    from tools import write_approval as wa
+
+    with _profile_scope(profile):
+        records = wa.list_pending(wa.SKILLS)
+    return [_pending_summary(r) for r in records]
+
+
+@router.post("/api/skills/pending/{pending_id}/approve")
+async def approve_pending_skill_write(pending_id: str, profile: Optional[str] = None):
+    """Replay a staged skill write (gate bypassed) and drop its pending record.
+
+    Mirrors the CLI `/skills approve <id>` flow: the record is only discarded
+    when the replay succeeds, so a failed approval stays in the queue.
+    """
+    from tools import write_approval as wa
+
+    with _profile_scope(profile):
+        rec = wa.get_pending(wa.SKILLS, pending_id)
+        if not rec:
+            raise HTTPException(
+                status_code=404, detail=f"No pending skill write with id '{pending_id}'."
+            )
+        from tools.skill_manager_tool import apply_skill_pending
+
+        result = json.loads(apply_skill_pending(rec.get("payload", {})))
+        if result.get("success"):
+            wa.discard_pending(wa.SKILLS, pending_id)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400, detail=result.get("error", "Failed to apply pending skill write.")
+        )
+    _clear_skills_prompt_cache()
+    return result
+
+
+@router.post("/api/skills/pending/{pending_id}/reject")
+async def reject_pending_skill_write(pending_id: str, profile: Optional[str] = None):
+    """Discard a staged skill write without applying it (nothing is written)."""
+    from tools import write_approval as wa
+
+    with _profile_scope(profile):
+        discarded = wa.discard_pending(wa.SKILLS, pending_id)
+    if not discarded:
+        raise HTTPException(
+            status_code=404, detail=f"No pending skill write with id '{pending_id}'."
+        )
+    return {"ok": True, "id": pending_id}
+
+
+@router.get("/api/skills/pending/{pending_id}/diff")
+async def pending_skill_write_diff(pending_id: str, profile: Optional[str] = None):
+    """Return the review payload for a staged write: gist + rendered diff.
+
+    ``diff`` is the unified diff against the on-disk skill (edit/patch/
+    write_file) or the full new content (create) — same rendering the CLI
+    `/skills diff <id>` pager shows, from ``write_approval.skill_pending_diff``.
+    """
+    from tools import write_approval as wa
+
+    with _profile_scope(profile):
+        rec = wa.get_pending(wa.SKILLS, pending_id)
+        if not rec:
+            raise HTTPException(
+                status_code=404, detail=f"No pending skill write with id '{pending_id}'."
+            )
+        diff = wa.skill_pending_diff(rec)
+    payload = rec.get("payload", {})
+    return {
+        "id": rec.get("id", ""),
+        "action": rec.get("action", ""),
+        "name": payload.get("name", ""),
+        "gist": rec.get("summary", ""),
+        "origin": rec.get("origin", "foreground"),
+        "created_at": rec.get("created_at", 0),
+        "file_path": payload.get("file_path") or "SKILL.md",
+        "old_string": payload.get("old_string") or "",
+        "new_string": payload.get("new_string") or "",
+        "diff": diff,
+    }
+
+
+@router.get("/api/skills/usage")
+async def get_skills_usage(profile: Optional[str] = None):
+    """Per-skill learning-activity rows for the dashboard feed.
+
+    Reads the curator sidecar (``skills/.usage.json``): use/patch counts, last
+    activity timestamp, and lifecycle state. Sorted by last activity, newest
+    first; skills with no recorded activity come last (``created_at`` order).
+    """
+    from tools.skill_usage import latest_activity_at, load_usage
+
+    with _profile_scope(profile):
+        usage = load_usage()
+    rows = []
+    for name, rec in usage.items():
+        rows.append(
+            {
+                "name": name,
+                "use_count": int(rec.get("use_count") or 0),
+                "patch_count": int(rec.get("patch_count") or 0),
+                "last_activity_at": latest_activity_at(rec),
+                "created_at": rec.get("created_at"),
+                "state": rec.get("state") or "active",
+            }
+        )
+    rows.sort(
+        key=lambda r: r.get("last_activity_at") or r.get("created_at") or "", reverse=True
+    )
+    return rows

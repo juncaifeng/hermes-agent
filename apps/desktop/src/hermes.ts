@@ -46,6 +46,8 @@ import type {
   PaginatedSessions,
   PairingResponse,
   PairingUser,
+  PendingSkillWrite,
+  PendingSkillWriteDiff,
   ProfileCreatePayload,
   ProfileDesktopOverlay,
   ProfileSetupCommand,
@@ -59,6 +61,7 @@ import type {
   SkillHubSearchResponse,
   SkillHubSourcesResponse,
   SkillInfo,
+  SkillUsageRow,
   StarmapGraph,
   StatusResponse,
   TerminalBackendsResponse,
@@ -186,6 +189,8 @@ export type {
   PaginatedSessions,
   PairingResponse,
   PairingUser,
+  PendingSkillWrite,
+  PendingSkillWriteDiff,
   ProfileCreatePayload,
   ProfileDesktopOverlay,
   ProfileInfo,
@@ -212,6 +217,7 @@ export type {
   SkillHubSource,
   SkillHubSourcesResponse,
   SkillInfo,
+  SkillUsageRow,
   StaleAuxAssignment,
   StarmapGraph,
   StatusResponse,
@@ -923,6 +929,44 @@ export function getSkills(): Promise<SkillInfo[]> {
   return window.hermesDesktop.api<SkillInfo[]>({
     ...profileScoped(),
     path: '/api/skills'
+  })
+}
+
+export function getPendingSkillWrites(): Promise<PendingSkillWrite[]> {
+  return window.hermesDesktop.api<PendingSkillWrite[]>({
+    ...profileScoped(),
+    path: '/api/skills/pending'
+  })
+}
+
+/** Returns the replayed skill_manage result verbatim (success/path/…). */
+export function approvePendingSkillWrite(id: string): Promise<Record<string, unknown>> {
+  return window.hermesDesktop.api<Record<string, unknown>>({
+    ...profileScoped(),
+    method: 'POST',
+    path: `/api/skills/pending/${encodeURIComponent(id)}/approve`
+  })
+}
+
+export function rejectPendingSkillWrite(id: string): Promise<{ id: string; ok: boolean }> {
+  return window.hermesDesktop.api<{ id: string; ok: boolean }>({
+    ...profileScoped(),
+    method: 'POST',
+    path: `/api/skills/pending/${encodeURIComponent(id)}/reject`
+  })
+}
+
+export function getPendingSkillWriteDiff(id: string): Promise<PendingSkillWriteDiff> {
+  return window.hermesDesktop.api<PendingSkillWriteDiff>({
+    ...profileScoped(),
+    path: `/api/skills/pending/${encodeURIComponent(id)}/diff`
+  })
+}
+
+export function getSkillsUsage(): Promise<SkillUsageRow[]> {
+  return window.hermesDesktop.api<SkillUsageRow[]>({
+    ...profileScoped(),
+    path: '/api/skills/usage'
   })
 }
 

@@ -365,7 +365,9 @@ export const zh: Translations = {
       saveFailed: '保存技能目录失败',
       noteReadOnly: '附加目录为只读——Hermes 新建的技能始终写入内置目录。',
       noteNewSessions: '变更对新会话生效，进行中的会话不受影响。',
-      noteTrust: '添加目录即信任其中的内容为可信技能来源。'
+      noteTrust: '添加目录即信任其中的内容为可信技能来源。',
+      writeApprovalTitle: '技能写入需审批',
+      writeApprovalDesc: '开启后，技能写入（包括后台自评审产生的写入）先进入待审队列，在技能页批准后才生效。'
     },
     plugins: {
       title: '桌面插件',
@@ -1248,6 +1250,34 @@ export const zh: Translations = {
     dirFilter: '按目录筛选',
     dirFilterAll: '全部目录',
     dirFilterBuiltin: '内置',
+    pending: {
+      title: '待审批',
+      count: n => `${n} 项待审`,
+      approve: '批准',
+      reject: '拒绝',
+      approved: name => `已批准 ${name}，对新会话生效。`,
+      rejected: name => `已拒绝 ${name}，未写入任何内容。`,
+      failed: name => `更新 ${name} 失败`,
+      showDiff: '展开 diff',
+      hideDiff: '收起 diff',
+      autoOrigin: '自动评审',
+      toast: n => `${n} 项技能更新待审批`,
+      toastAction: '去审批',
+      actions: {
+        create: '新建',
+        edit: '重写',
+        patch: '修补',
+        write_file: '写文件',
+        remove_file: '删文件',
+        delete: '删除'
+      }
+    },
+    feed: {
+      title: '学习动态',
+      empty: '暂无学习动态。',
+      patches: n => `修补 ${n} 次`,
+      states: { active: '活跃', stale: '久置', archived: '已归档' }
+    },
     enableAll: '全部启用',
     disableAll: '全部停用',
     disableUnused: '禁用未使用',

@@ -947,6 +947,41 @@ export interface SkillInfo {
   source_dir?: string
 }
 
+/** A staged skill write awaiting approval (GET /api/skills/pending). */
+export interface PendingSkillWrite {
+  /** skill_manage action: create / edit / patch / write_file / remove_file / delete. */
+  action: string
+  /** Unix seconds. */
+  created_at: number
+  /** One-line human summary built at stage time. */
+  gist: string
+  id: string
+  name: string
+  /** 'foreground' = live agent turn; 'background_review' = self-improvement fork. */
+  origin: string
+}
+
+/** Review payload for one staged write (GET /api/skills/pending/<id>/diff). */
+export interface PendingSkillWriteDiff extends PendingSkillWrite {
+  /** Unified diff against the on-disk skill, or full content for creates. */
+  diff: string
+  file_path: string
+  new_string?: string
+  old_string?: string
+}
+
+/** One row of the learning-activity feed (GET /api/skills/usage). */
+export interface SkillUsageRow {
+  created_at?: null | string
+  /** ISO timestamp of the latest use/view/patch; null when never active. */
+  last_activity_at: null | string
+  name: string
+  patch_count: number
+  /** Curator lifecycle: active / stale / archived. */
+  state: string
+  use_count: number
+}
+
 export interface ToolsetInfo {
   configured: boolean
   description: string

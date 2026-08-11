@@ -100,6 +100,25 @@ describe('SkillsDirsSettings', () => {
     expect(await screen.findByText('No additional directories configured.')).toBeTruthy()
   })
 
+  it('writes skills.write_approval when the gate toggle is flipped, preserving siblings', async () => {
+    const { onConfigSaved } = await renderSettings()
+
+    const toggle = await screen.findByRole('switch', { name: 'Require approval for skill writes' })
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+
+    await act(async () => {
+      fireEvent.click(toggle)
+    })
+
+    await waitFor(() => expect(saveHermesConfig).toHaveBeenCalled())
+    const saved = saveHermesConfig.mock.calls[0][0] as { skills: Record<string, unknown> }
+
+    expect(saved.skills.write_approval).toBe(true)
+    expect(saved.skills.external_dirs).toEqual(['/ext/a', '/ext/b'])
+    expect(saved.skills.template_vars).toEqual({ team: 'a' })
+    expect(onConfigSaved).toHaveBeenCalled()
+  })
+
   it('adds a picked directory, preserving sibling skills config keys', async () => {
     selectDesktopPaths.mockResolvedValue(['/ext/c'])
     const { onConfigSaved } = await renderSettings()

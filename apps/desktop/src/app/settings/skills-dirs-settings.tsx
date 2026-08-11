@@ -16,8 +16,10 @@ import {
   dirIdentityKey,
   homeFromHermesHome,
   readExternalDirs,
+  readWriteApproval,
   removeExternalDir,
-  withExternalDirs
+  withExternalDirs,
+  withSkillsConfig
 } from '@/lib/skills-dirs'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { notify, notifyError } from '@/store/notifications'
@@ -25,7 +27,7 @@ import { notify, notifyError } from '@/store/notifications'
 import { setHermesConfigCache, useHermesConfigRecord } from '../hooks/use-config-record'
 import { SKILLS_QUERY_KEY } from '../skills/store'
 
-import { EmptyState, ListRow, Pill, SectionHeading, SettingsContent, SettingsSkeleton } from './primitives'
+import { EmptyState, ListRow, Pill, SectionHeading, SettingsContent, SettingsSkeleton, ToggleRow } from './primitives'
 
 const CAPTION = 'text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)'
 
@@ -148,6 +150,22 @@ export function SkillsDirsSettings({ onConfigSaved }: { onConfigSaved?: () => vo
       .catch((err: unknown) => notifyError(err, s.open))
   }
 
+  // The write-approval gate (skills.write_approval): when on, skill writes —
+  // background self-review ones included — stage into the pending queue and
+  // take effect only after approval on the Skills page.
+  const toggleWriteApproval = async (on: boolean) => {
+    try {
+      const fresh = await getHermesConfigRecord()
+      const merged = withSkillsConfig(fresh, { write_approval: on })
+
+      await saveHermesConfig(merged)
+      setHermesConfigCache(merged)
+      onConfigSaved?.()
+    } catch (err) {
+      notifyError(err, s.saveFailed)
+    }
+  }
+
   if (isPending) {
     return <SettingsSkeleton sections={[{ heading: true, rows: 3 }]} />
   }
@@ -171,6 +189,15 @@ export function SkillsDirsSettings({ onConfigSaved }: { onConfigSaved?: () => vo
 
   return (
     <SettingsContent>
+      <div className="mb-6">
+        <ToggleRow
+          checked={readWriteApproval(config)}
+          description={s.writeApprovalDesc}
+          label={s.writeApprovalTitle}
+          onChange={on => void toggleWriteApproval(on)}
+        />
+      </div>
+
       <SectionHeading
         aside={
           missingDirs.length > 0 && (

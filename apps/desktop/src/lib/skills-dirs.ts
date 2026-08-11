@@ -1,12 +1,13 @@
 /**
- * Pure helpers for managing `skills.external_dirs` (additional skill scan
- * roots) and for grouping skills by the directory they were discovered in.
+ * Pure helpers for the `skills` config section: `external_dirs` (additional
+ * skill scan roots) management, grouping skills by the directory they were
+ * discovered in, and the `write_approval` gate flag.
  *
- * Shared by Settings → Skill directories (add/remove/validate) and the
- * Capabilities → Skills directory filter. Identity comparisons are lexical:
- * separators unified, trailing slashes dropped, Windows-style roots
- * case-folded — the backend resolves these same entries to absolute paths
- * before scanning (agent/skill_utils.get_external_skills_dirs).
+ * Shared by Settings → Skill directories (add/remove/validate + the approval
+ * toggle) and the Capabilities → Skills directory filter. Identity
+ * comparisons are lexical: separators unified, trailing slashes dropped,
+ * Windows-style roots case-folded — the backend resolves these same entries
+ * to absolute paths before scanning (agent/skill_utils.get_external_skills_dirs).
  */
 
 import { normalizeDisplayPath } from '@/lib/display-path'
@@ -117,13 +118,43 @@ export function removeExternalDir(dirs: string[], target: string, home = ''): st
 }
 
 /**
+ * Deep-merge keys into the `skills` config section. Sibling keys
+ * (template_vars, disabled, platform_disabled, …) survive.
+ */
+export function withSkillsConfig(config: HermesConfigRecord, patch: Record<string, unknown>): HermesConfigRecord {
+  const skills = config.skills && typeof config.skills === 'object' ? (config.skills as Record<string, unknown>) : {}
+
+  return { ...config, skills: { ...skills, ...patch } }
+}
+
+/**
  * Deep-merge a new external_dirs list into the config record. Sibling keys
  * under `skills` (template_vars, disabled, platform_disabled, …) survive.
  */
 export function withExternalDirs(config: HermesConfigRecord, dirs: string[]): HermesConfigRecord {
-  const skills = config.skills && typeof config.skills === 'object' ? (config.skills as Record<string, unknown>) : {}
+  return withSkillsConfig(config, { external_dirs: dirs })
+}
 
-  return { ...config, skills: { ...skills, external_dirs: dirs } }
+/**
+ * Read `skills.write_approval` (the skill-write approval gate). Defaults off
+ * for any unset/untruthy value, matching the backend
+ * (tools/write_approval.py): existing installs keep free-flowing writes until
+ * the user opts in.
+ */
+export function readWriteApproval(config: HermesConfigRecord | null | undefined): boolean {
+  const skills = config?.skills
+
+  if (!skills || typeof skills !== 'object') {
+    return false
+  }
+
+  const raw = (skills as Record<string, unknown>).write_approval
+
+  if (typeof raw === 'string') {
+    return ['1', 'on', 'true', 'yes'].includes(raw.trim().toLowerCase())
+  }
+
+  return Boolean(raw)
 }
 
 /** Directory a skill was discovered in, normalized for display/identity. */

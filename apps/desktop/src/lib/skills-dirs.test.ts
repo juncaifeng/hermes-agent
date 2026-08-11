@@ -8,8 +8,10 @@ import {
   homeFromHermesHome,
   matchesSourceDir,
   readExternalDirs,
+  readWriteApproval,
   removeExternalDir,
-  withExternalDirs
+  withExternalDirs,
+  withSkillsConfig
 } from './skills-dirs'
 
 describe('dirIdentityKey', () => {
@@ -99,6 +101,35 @@ describe('withExternalDirs', () => {
 
   it('creates the skills section when absent', () => {
     expect(withExternalDirs({}, ['/new']).skills).toEqual({ external_dirs: ['/new'] })
+  })
+})
+
+describe('withSkillsConfig', () => {
+  it('patches arbitrary skills keys without dropping siblings', () => {
+    const merged = withSkillsConfig(
+      { skills: { external_dirs: ['/a'], template_vars: { k: 'v' } } },
+      {
+        write_approval: true
+      }
+    )
+
+    expect(merged.skills).toEqual({ external_dirs: ['/a'], template_vars: { k: 'v' }, write_approval: true })
+  })
+})
+
+describe('readWriteApproval', () => {
+  it('defaults off for missing or malformed config', () => {
+    expect(readWriteApproval(null)).toBe(false)
+    expect(readWriteApproval({})).toBe(false)
+    expect(readWriteApproval({ skills: 'nope' })).toBe(false)
+    expect(readWriteApproval({ skills: {} })).toBe(false)
+  })
+
+  it('reads real booleans and the usual truthy strings', () => {
+    expect(readWriteApproval({ skills: { write_approval: true } })).toBe(true)
+    expect(readWriteApproval({ skills: { write_approval: 'on' } })).toBe(true)
+    expect(readWriteApproval({ skills: { write_approval: false } })).toBe(false)
+    expect(readWriteApproval({ skills: { write_approval: 'off' } })).toBe(false)
   })
 })
 

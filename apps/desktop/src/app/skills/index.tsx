@@ -68,8 +68,10 @@ import { ToolsetConfigPanel } from '../settings/toolset-config-panel'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { SkillsHub } from './hub'
+import { LearningFeedSection } from './learning-feed'
 import { McpTab } from './mcp-tab'
-import { $skillsSortDesc, $toolsetsSortDesc, SKILLS_QUERY_KEY } from './store'
+import { PendingSkillsSection } from './pending-section'
+import { $pendingSkillWriteCount, $skillsSortDesc, $toolsetsSortDesc, SKILLS_QUERY_KEY } from './store'
 
 const SKILLS_MODES = ['skills', 'toolsets', 'mcp', 'hub'] as const
 
@@ -246,6 +248,9 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
   const toolCallsEpoch = useRef(0)
   const skillsSortDesc = useStore($skillsSortDesc)
   const toolsetsSortDesc = useStore($toolsetsSortDesc)
+  // Pending skill-write count for the tab's attention badge — written by the
+  // sidebar-mounted watcher (0 when the approval gate is off).
+  const pendingSkillWrites = useStore($pendingSkillWriteCount)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
   const [selectedToolset, setSelectedToolset] = useState<string | null>(null)
@@ -604,7 +609,12 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
       }
       searchValue={query}
       tabs={[
-        { id: 'skills', label: t.skills.tabSkills, meta: skills?.length ?? null },
+        {
+          alert: pendingSkillWrites > 0 ? pendingSkillWrites : undefined,
+          id: 'skills',
+          label: t.skills.tabSkills,
+          meta: skills?.length ?? null
+        },
         { id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null },
         { id: 'mcp', label: t.skills.tabMcp },
         { id: 'hub', label: t.skills.tabHub }
@@ -628,75 +638,81 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
       ) : !skills || !toolsets ? (
         <PageLoader label={t.skills.loading} />
       ) : mode === 'skills' ? (
-        visibleSkills.length === 0 ? (
-          capabilityEmpty('skills')
-        ) : (
-          <MasterDetail pane={skillEditorPane} split="wide">
-            <ListColumn
-              header={
-                <ListStrip
-                  left={
-                    <>
-                      {sortButton(skillsSortDesc, () => $skillsSortDesc.set(!$skillsSortDesc.get()))}
-                      {showDirFilter && (
-                        <Select
-                          onValueChange={value => setDirFilter(value === 'all' ? '' : value)}
-                          value={dirFilter || 'all'}
-                        >
-                          <SelectTrigger aria-label={t.skills.dirFilter} className="max-w-44" size="xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">{t.skills.dirFilterAll}</SelectItem>
-                            <SelectItem value="builtin">{t.skills.dirFilterBuiltin}</SelectItem>
-                            {externalDirs.map(dir => (
-                              <SelectItem key={dir} value={dir}>
-                                {displayPath(dir, { home: dirHome })}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </>
-                  }
-                  right={
-                    <ListStripMenu
-                      items={[
-                        { disabled: bulkBusy, label: t.skills.disableUnused, onSelect: () => void disableUnused() }
-                      ]}
-                      label={t.skills.tabSkills}
-                      toggle={bulkSwitch(allSkillsEnabled)}
+        <div className="flex h-full min-h-0 flex-col">
+          <PendingSkillsSection />
+          <LearningFeedSection />
+          {visibleSkills.length === 0 ? (
+            capabilityEmpty('skills')
+          ) : (
+            <div className="min-h-0 flex-1">
+              <MasterDetail pane={skillEditorPane} split="wide">
+                <ListColumn
+                  header={
+                    <ListStrip
+                      left={
+                        <>
+                          {sortButton(skillsSortDesc, () => $skillsSortDesc.set(!$skillsSortDesc.get()))}
+                          {showDirFilter && (
+                            <Select
+                              onValueChange={value => setDirFilter(value === 'all' ? '' : value)}
+                              value={dirFilter || 'all'}
+                            >
+                              <SelectTrigger aria-label={t.skills.dirFilter} className="max-w-44" size="xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">{t.skills.dirFilterAll}</SelectItem>
+                                <SelectItem value="builtin">{t.skills.dirFilterBuiltin}</SelectItem>
+                                {externalDirs.map(dir => (
+                                  <SelectItem key={dir} value={dir}>
+                                    {displayPath(dir, { home: dirHome })}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </>
+                      }
+                      right={
+                        <ListStripMenu
+                          items={[
+                            { disabled: bulkBusy, label: t.skills.disableUnused, onSelect: () => void disableUnused() }
+                          ]}
+                          label={t.skills.tabSkills}
+                          toggle={bulkSwitch(allSkillsEnabled)}
+                        />
+                      }
                     />
                   }
-                />
-              }
-            >
-              {visibleSkills.map(skill => (
-                <CapRow
-                  active={activeSkill?.name === skill.name}
-                  busy={bulkBusy}
-                  enabled={skill.enabled}
-                  key={skill.name}
-                  meta={usageOf(skill) > 0 ? `×${compactNumber(usageOf(skill))}` : undefined}
-                  onSelect={() => setSelectedSkill(skill.name)}
-                  onToggle={enabled => void handleToggleSkill(skill, enabled)}
-                  subtitle={skillSubtitle(skill)}
-                  title={skill.name}
-                  toggleLabel={skill.name}
-                />
-              ))}
-            </ListColumn>
-            <DetailColumn footer={t.skills.changesApplyNewSessions}>
-              {activeSkill && (
-                <SkillDetail
-                  onArchive={() => setArchiveTarget(activeSkill.name)}
-                  onEdit={() => void openSkillEditor(activeSkill.name)}
-                  skill={activeSkill}
-                />
-              )}
-            </DetailColumn>
-          </MasterDetail>
-        )
+                >
+                  {visibleSkills.map(skill => (
+                    <CapRow
+                      active={activeSkill?.name === skill.name}
+                      busy={bulkBusy}
+                      enabled={skill.enabled}
+                      key={skill.name}
+                      meta={usageOf(skill) > 0 ? `×${compactNumber(usageOf(skill))}` : undefined}
+                      onSelect={() => setSelectedSkill(skill.name)}
+                      onToggle={enabled => void handleToggleSkill(skill, enabled)}
+                      subtitle={skillSubtitle(skill)}
+                      title={skill.name}
+                      toggleLabel={skill.name}
+                    />
+                  ))}
+                </ListColumn>
+                <DetailColumn footer={t.skills.changesApplyNewSessions}>
+                  {activeSkill && (
+                    <SkillDetail
+                      onArchive={() => setArchiveTarget(activeSkill.name)}
+                      onEdit={() => void openSkillEditor(activeSkill.name)}
+                      skill={activeSkill}
+                    />
+                  )}
+                </DetailColumn>
+              </MasterDetail>
+            </div>
+          )}
+        </div>
       ) : visibleToolsets.length === 0 ? (
         capabilityEmpty('tools')
       ) : (
