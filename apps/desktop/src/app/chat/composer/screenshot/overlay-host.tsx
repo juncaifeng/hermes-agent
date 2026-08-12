@@ -6,14 +6,15 @@ import { $overlayScreenshotShot } from '@/store/screenshots'
 import { requestComposerInsert } from '../focus'
 
 import { ScreenshotAnnotator } from './annotator'
-import { imageNoteText } from './annotation-model'
+import { type Annotation, imageMarkNoteLines } from './annotation-model'
 import { attachScreenshotToMain, nextMainScreenshotNumber } from './quick-capture'
 
 /**
  * Host for the floating-button quick capture: the overlay click produces a
  * full-screen shot (parked in $overlayScreenshotShot by the sync module);
- * this dialog annotates it, then the image + its numbered note land in the
- * main composer. Mounted once in the main window (contrib/wiring).
+ * this dialog annotates it, then the image + its numbered note lines
+ * ("图N:M …") land in the main composer. Mounted once in the main window
+ * (contrib/wiring).
  */
 export function OverlayScreenshotHost() {
   const { t } = useI18n()
@@ -25,19 +26,21 @@ export function OverlayScreenshotHost() {
 
   const close = () => $overlayScreenshotShot.set(null)
 
-  const finish = async (blob: Blob, description: string) => {
+  const finish = async (blob: Blob, annotations: Annotation[]) => {
     close()
 
     // Number BEFORE attaching — afterwards the new image is already counted.
-    const text = imageNoteText(t.composer.screenshot.noteLabel(nextMainScreenshotNumber()), description)
+    const lines = imageMarkNoteLines(nextMainScreenshotNumber(), annotations, (n, m) =>
+      t.composer.screenshot.noteLabel(n, m)
+    ).join('\n')
     const attached = await attachScreenshotToMain(blob)
 
-    if (attached && text) {
-      requestComposerInsert(text, { mode: 'block', target: 'main' })
+    if (attached && lines) {
+      requestComposerInsert(lines, { mode: 'block', target: 'main' })
     }
   }
 
   return (
-    <ScreenshotAnnotator imageDataUrl={shot} onCancel={close} onDone={(blob, desc) => void finish(blob, desc)} open />
+    <ScreenshotAnnotator imageDataUrl={shot} onCancel={close} onDone={(blob, marks) => void finish(blob, marks)} open />
   )
 }

@@ -1829,10 +1829,10 @@ export interface Translations {
       annotateTitle: string
       annotateHint: string
       notesTitle: string
-      notesPlaceholder: string
-      /** Per-image note prefix, separator included — "Image 2: " / "图2:". */
-      noteLabel: (n: number) => string
-      marksCount: (n: number) => string
+      notesEmpty: string
+      notePlaceholder: (label: string) => string
+      /** Per-mark note prefix, separator included — "Image 1-2: " / "图1:2 ". */
+      noteLabel: (image: number, mark: number) => string
       toolRect: string
       toolArrow: string
       toolPen: string

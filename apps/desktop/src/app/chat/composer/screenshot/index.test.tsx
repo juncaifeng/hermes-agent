@@ -21,10 +21,18 @@ vi.mock('@/store/notifications', () => ({
 
 // The annotator is canvas-bound (jsdom has no 2d context) — stub it at the
 // component boundary and drive its callbacks directly.
-let annotatorProps: { onCancel: () => void; onDone: (blob: Blob, notes: string) => void; open: boolean } | null = null
+let annotatorProps: {
+  onCancel: () => void
+  onDone: (blob: Blob, marks: { description: string }[]) => void
+  open: boolean
+} | null = null
 
 vi.mock('./annotator', () => ({
-  ScreenshotAnnotator: (props: { onCancel: () => void; onDone: (b: Blob, n: string) => void; open: boolean }) => {
+  ScreenshotAnnotator: (props: {
+    onCancel: () => void
+    onDone: (b: Blob, marks: { description: string }[]) => void
+    open: boolean
+  }) => {
     annotatorProps = props
 
     return props.open ? <div data-testid="annotator-open" /> : null
@@ -114,11 +122,36 @@ describe('ScreenshotButton', () => {
     const blob = new Blob(['png-bytes'], { type: 'image/png' })
 
     await act(async () => {
-      annotatorProps!.onDone(blob, 'fix the button')
+      annotatorProps!.onDone(blob, [{ description: 'fix the button' }])
     })
 
     expect(onAttachImageBlob).toHaveBeenCalledWith(blob)
-    expect(onInsertText).toHaveBeenCalledWith('Image 1: fix the button')
+    expect(onInsertText).toHaveBeenCalledWith('Image 1-1: fix the button')
+  })
+
+  it('joins one line per described mark, skipping blank ones', async () => {
+    installBridge()
+    await renderButton()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Screenshot' }))
+    })
+    await screen.findByText('a.txt')
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('a.txt'))
+    })
+    await screen.findByTestId('annotator-open')
+
+    await act(async () => {
+      annotatorProps!.onDone(new Blob(['x'], { type: 'image/png' }), [
+        { description: '' },
+        { description: 'kept' },
+        { description: 'also kept' }
+      ])
+    })
+
+    expect(onInsertText).toHaveBeenCalledWith('Image 1-2: kept\nImage 1-3: also kept')
   })
 
   it('numbers the note by images already in the draft', async () => {
@@ -140,10 +173,10 @@ describe('ScreenshotButton', () => {
     await screen.findByTestId('annotator-open')
 
     await act(async () => {
-      annotatorProps!.onDone(new Blob(['x'], { type: 'image/png' }), 'second shot')
+      annotatorProps!.onDone(new Blob(['x'], { type: 'image/png' }), [{ description: 'second shot' }])
     })
 
-    expect(onInsertText).toHaveBeenCalledWith('Image 2: second shot')
+    expect(onInsertText).toHaveBeenCalledWith('Image 2-1: second shot')
   })
 
   it('attaches without draft text when the description is blank', async () => {
@@ -163,7 +196,7 @@ describe('ScreenshotButton', () => {
     const blob = new Blob(['x'], { type: 'image/png' })
 
     await act(async () => {
-      annotatorProps!.onDone(blob, '   ')
+      annotatorProps!.onDone(blob, [{ description: '   ' }])
     })
 
     expect(onAttachImageBlob).toHaveBeenCalledWith(blob)
@@ -186,7 +219,7 @@ describe('ScreenshotButton', () => {
     await screen.findByTestId('annotator-open')
 
     await act(async () => {
-      annotatorProps!.onDone(new Blob(['x'], { type: 'image/png' }), '① note')
+      annotatorProps!.onDone(new Blob(['x'], { type: 'image/png' }), [{ description: 'note' }])
     })
 
     expect(onInsertText).not.toHaveBeenCalled()

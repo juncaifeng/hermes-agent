@@ -13,7 +13,7 @@ import { GHOST_ICON_BTN } from '../controls'
 import { useComposerScope } from '../scope'
 
 import { ScreenshotAnnotator } from './annotator'
-import { imageNoteNumber, imageNoteText } from './annotation-model'
+import { type Annotation, imageMarkNoteLines, imageNoteNumber } from './annotation-model'
 import { groupWindowsByProcess, UNKNOWN_PROCESS } from './window-list'
 
 interface ScreenshotButtonProps {
@@ -78,18 +78,21 @@ export function ScreenshotButton({ disabled, onAttachImageBlob, onInsertText }: 
     }
   }
 
-  const finish = async (blob: Blob, description: string) => {
+  const finish = async (blob: Blob, annotations: Annotation[]) => {
     close()
 
     // Number BEFORE attaching — afterwards the new image is already counted.
+    // One "图N:M …" line per described mark; nothing when all are blank.
     const imageCount = scope.attachments.$attachments.get().filter(a => a.kind === 'image').length
-    const text = imageNoteText(copy.noteLabel(imageNoteNumber(imageCount)), description)
+    const lines = imageMarkNoteLines(imageNoteNumber(imageCount), annotations, (n, m) => copy.noteLabel(n, m)).join(
+      '\n'
+    )
     const attached = await onAttachImageBlob!(blob)
 
     // Only annotate the draft when the image actually landed — a numbered
     // note with no screenshot would read as a dangling reference.
-    if (attached !== false && text) {
-      onInsertText(text)
+    if (attached !== false && lines) {
+      onInsertText(lines)
     }
   }
 
