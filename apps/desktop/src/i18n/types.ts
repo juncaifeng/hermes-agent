@@ -1793,6 +1793,24 @@ export interface Translations {
     folder: string
     images: string
     pasteImage: string
+    screenshot: {
+      button: string
+      pickWindow: string
+      entireScreen: string
+      loadingWindows: string
+      noWindows: string
+      failedTitle: string
+      annotateTitle: string
+      annotateHint: string
+      notesTitle: string
+      notesEmpty: string
+      notePlaceholder: (label: string) => string
+      toolRect: string
+      toolArrow: string
+      toolPen: string
+      undo: string
+      insert: string
+    }
     url: string
     promptSnippets: string
     tipPre: string

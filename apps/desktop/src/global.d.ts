@@ -140,6 +140,12 @@ declare global {
       saveImageFromUrl: (url: string) => Promise<boolean>
       saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string) => Promise<string>
       saveClipboardImage: () => Promise<string>
+      /** Quick screenshot: visible top-level windows (own process excluded).
+       *  Windows-only; rejects with 'unsupported' elsewhere. */
+      listWindows?: () => Promise<HermesWindowInfo[]>
+      /** Capture one window (or 'screen' for the full virtual screen) as a
+       *  base64 PNG. Rejects with a human-readable reason on failure. */
+      captureWindow?: (id: string) => Promise<string>
       getPathForFile: (file: File) => string
       normalizePreviewTarget: (target: string, baseDir?: string) => Promise<HermesPreviewTarget | null>
       watchPreviewFile: (url: string) => Promise<HermesPreviewWatch>
@@ -919,6 +925,16 @@ export interface HermesReadDirEntry {
 export interface HermesReadDirResult {
   entries: HermesReadDirEntry[]
   error?: string
+}
+
+/** One capturable window, from the quick-screenshot enumerator. */
+export interface HermesWindowInfo {
+  /** Decimal HWND string; pass back to captureWindow. */
+  id: string
+  pid: number
+  /** Process image file name (e.g. "notepad.exe"); may be empty. */
+  process: string
+  title: string
 }
 
 export interface HermesPreviewFileChanged {

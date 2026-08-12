@@ -67,6 +67,7 @@ import {
   RICH_INPUT_SLOT
 } from './rich-editor'
 import { useComposerScope } from './scope'
+import { ScreenshotButton } from './screenshot'
 import { ComposerStatusStack } from './status-stack'
 import { CodingStatusRow } from './status-stack/coding-row'
 import { extractClipboardImageBlobs, openDirectiveScope } from './text-utils'
@@ -929,6 +930,7 @@ export function ChatBar({
       }}
       disabled={disabled}
       hasComposerPayload={hasComposerPayload}
+      leading={<ScreenshotButton disabled={disabled} onAttachImageBlob={onAttachImageBlob} onInsertText={insertText} />}
       onDictate={dictate}
       onQueue={queueDraft}
       onToggleAutoSpeak={handleToggleAutoSpeak}

@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react'
+import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -59,6 +60,7 @@ export function ComposerControls({
   conversation,
   disabled,
   hasComposerPayload,
+  leading,
   state,
   voiceStatus,
   onDictate,
@@ -73,6 +75,8 @@ export function ComposerControls({
   conversation: ConversationProps
   disabled: boolean
   hasComposerPayload: boolean
+  /** Optional extra buttons rendered first in the row (quick screenshot). */
+  leading?: ReactNode
   state: ChatBarState
   voiceStatus: VoiceStatus
   onDictate: () => void
@@ -91,6 +95,7 @@ export function ComposerControls({
 
   return (
     <div className="ml-auto flex shrink-0 items-center gap-(--composer-control-gap)">
+      {leading}
       <ModelPill compact={compactModelPill} disabled={disabled} model={state.model} />
       <DictationButton disabled={disabled} onToggle={onDictate} state={state.voice} status={voiceStatus} />
       <AutoSpeakButton active={autoSpeak} disabled={disabled} onToggle={onToggleAutoSpeak} />

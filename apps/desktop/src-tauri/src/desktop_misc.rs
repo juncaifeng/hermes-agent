@@ -216,6 +216,48 @@ pub fn reveal_path(path: String) -> Result<(), String> {
     open::that_detached(&path).map_err(|e| format!("reveal: {e}"))
 }
 
+/// `hermes:saveImageBuffer` — persist a composer image (paste / drop /
+/// quick-screenshot) under `<app_data>/composer-images/` and return its path.
+/// Port of Electron's `writeComposerImage`; the renderer sends the bytes
+/// base64-encoded (JSON arrays of a multi-MB screenshot are needlessly fat).
+#[tauri::command]
+pub fn save_image_buffer(app: AppHandle, data_base64: String, ext: String) -> Result<String, String> {
+    use base64::Engine as _;
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|e| format!("saveImageBuffer: bad base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("saveImageBuffer: empty image".to_string());
+    }
+
+    // Same sanitization as Electron: `.[a-z0-9]{1,5}` or fall back to .png.
+    let raw = ext.trim().to_lowercase();
+    let bare = raw.strip_prefix('.').unwrap_or(&raw);
+    let safe_ext = if !bare.is_empty() && bare.len() <= 5 && bare.chars().all(|c| c.is_ascii_alphanumeric()) {
+        format!(".{bare}")
+    } else {
+        ".png".to_string()
+    };
+
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app data dir unavailable: {e}"))?
+        .join("composer-images");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create composer-images dir: {e}"))?;
+
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let suffix: u32 = rand::random();
+    let path = dir.join(format!("composer_{millis}_{suffix:08x}{safe_ext}"));
+    std::fs::write(&path, &bytes).map_err(|e| format!("write composer image: {e}"))?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
 /// `hermes:preview:openInBrowser` — open a preview URL in the default browser.
 #[tauri::command]
 pub fn open_preview_in_browser(url: String) -> Result<(), String> {

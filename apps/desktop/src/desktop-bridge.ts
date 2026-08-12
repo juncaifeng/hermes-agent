@@ -164,6 +164,10 @@ if (isTauri) {
     gitRoot: (startPath: string) => invoke<any>('git_root', { startPath }),
     revealPath: (path: string) => invoke<void>('reveal_path', { path }),
     openDir: (path: string) => invoke<void>('open_dir', { path }),
+    // Quick screenshot: enumerate capturable windows / capture one (or
+    // 'screen' for the full virtual screen) as a base64 PNG.
+    listWindows: () => invoke<any[]>('list_windows'),
+    captureWindow: (id: string) => invoke<string>('capture_window', { id }),
     desktopPluginsRoot: () => invoke<string | null>('desktop_plugins_root'),
     renamePath: (path: string, name: string) => invoke<any>('rename_path', { path, name }),
     trashPath: (path: string) => invoke<void>('trash_path', { path }),
@@ -171,7 +175,19 @@ if (isTauri) {
       invoke<boolean>('write_clipboard', { text }).then(() => true),
     readClipboard: () => invoke<string>('read_clipboard'),
     saveImageFromUrl: () => Promise.resolve({ ok: true }),
-    saveImageBuffer: () => Promise.resolve({ ok: true }),
+    // Bytes cross the IPC as base64 — a JSON number-array of a multi-MB
+    // screenshot is ~7x fatter and slower to (de)serialize.
+    saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string) => {
+      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
+      let binary = ''
+      const CHUNK = 0x8000
+
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+      }
+
+      return invoke<string>('save_image_buffer', { dataBase64: btoa(binary), ext })
+    },
     saveClipboardImage: () => Promise.resolve({ ok: true }),
     getPathForFile: () => '',
     openSessionWindow: (sessionId: string, opts?: unknown) =>

@@ -4,6 +4,7 @@ use tauri::Manager;
 
 mod asset_server;
 mod bootstrap;
+mod capture;
 mod commands;
 mod connection_config;
 mod desktop_misc;
@@ -123,7 +124,11 @@ pub fn run() {
             desktop_misc::rename_path,
             desktop_misc::open_dir,
             desktop_misc::reveal_path,
+            desktop_misc::save_image_buffer,
             desktop_misc::open_preview_in_browser,
+            // -- quick screenshot (composer window capture → annotate → attach) --
+            capture::list_windows,
+            capture::capture_window,
             desktop_misc::get_recent_logs,
             desktop_misc::reveal_logs,
             desktop_misc::desktop_plugins_root,
