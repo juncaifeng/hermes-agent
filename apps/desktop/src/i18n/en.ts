@@ -351,6 +351,7 @@ export const en: Translations = {
       billing: 'Billing',
       notifications: 'Notifications',
       plugins: 'Plugins',
+      screenshots: 'Screenshots',
       skillsDirs: 'Skill Directories'
     },
     skillsDirs: {
@@ -379,6 +380,35 @@ export const en: Translations = {
       writeApprovalTitle: 'Require approval for skill writes',
       writeApprovalDesc:
         'When on, skill writes — including ones from the background self-review — are staged in a pending queue and only take effect after you approve them on the Skills page.'
+    },
+    screenshots: {
+      title: 'Screenshots',
+      blurb: 'Where quick screenshots and pasted images are stored, and how much space they use.',
+      dirModeTitle: 'Save location',
+      dirModeDesc:
+        'Project mode keeps screenshots alongside the workspace so the agent can re-read them by path later. Only affects new screenshots.',
+      dirModeAppData: 'App data (default)',
+      dirModeProject: 'Current project (.hermes/screenshots)',
+      projectNoWorkspace: 'No active workspace — project mode falls back to app data for now.',
+      gitExcludeTitle: 'Exclude from git',
+      gitExcludeDesc:
+        "Appends .hermes/screenshots/ to this repo's .git/info/exclude (never .gitignore). Applies to the current workspace.",
+      gitExcludeApplied: 'Added to .git/info/exclude.',
+      gitExcludeAlready: 'Already excluded.',
+      gitExcludeFailed: 'Could not update git exclude',
+      storageTitle: 'Storage',
+      storageFiles: (files, size) => `${files} ${files === 1 ? 'file' : 'files'} · ${size}`,
+      storageEmpty: 'empty',
+      storageLoadFailed: 'Could not read screenshot storage stats',
+      clean: 'Clean up',
+      cleaning: 'Cleaning…',
+      cleanConfirm:
+        'Delete every stored screenshot in both locations? Image attachments in past messages will no longer load.',
+      cleaned: (files, size) => `Removed ${files} ${files === 1 ? 'file' : 'files'}, freed ${size}.`,
+      cleanFailed: 'Cleanup failed',
+      overlayTitle: 'Floating screenshot button',
+      overlayDesc:
+        'Show a small always-on-top button you can drag anywhere; click it to capture a window or the screen.'
     },
     plugins: {
       title: 'Desktop plugins',
@@ -2148,10 +2178,11 @@ export const en: Translations = {
       noWindows: 'No capturable windows found.',
       failedTitle: 'Screenshot failed',
       annotateTitle: 'Annotate screenshot',
-      annotateHint: 'Draw on the screenshot — every mark is numbered. Add a note for each mark on the right.',
-      notesTitle: 'Notes',
-      notesEmpty: 'Draw a mark to add a note.',
-      notePlaceholder: label => `Note for ${label}…`,
+      annotateHint: 'Draw on the screenshot, then describe the image once for the agent.',
+      notesTitle: 'Description',
+      notesPlaceholder: 'What should the agent notice in this image? (optional)',
+      noteLabel: n => `Image ${n}: `,
+      marksCount: n => `${n} ${n === 1 ? 'mark' : 'marks'}`,
       toolRect: 'Rectangle',
       toolArrow: 'Arrow',
       toolPen: 'Pen',

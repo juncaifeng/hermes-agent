@@ -303,6 +303,7 @@ export interface Translations {
       billing: string
       notifications: string
       plugins: string
+      screenshots: string
       skillsDirs: string
     }
     skillsDirs: {
@@ -329,6 +330,31 @@ export interface Translations {
       noteTrust: string
       writeApprovalTitle: string
       writeApprovalDesc: string
+    }
+    screenshots: {
+      title: string
+      blurb: string
+      dirModeTitle: string
+      dirModeDesc: string
+      dirModeAppData: string
+      dirModeProject: string
+      projectNoWorkspace: string
+      gitExcludeTitle: string
+      gitExcludeDesc: string
+      gitExcludeApplied: string
+      gitExcludeAlready: string
+      gitExcludeFailed: string
+      storageTitle: string
+      storageFiles: (files: number, size: string) => string
+      storageEmpty: string
+      storageLoadFailed: string
+      clean: string
+      cleaning: string
+      cleanConfirm: string
+      cleaned: (files: number, size: string) => string
+      cleanFailed: string
+      overlayTitle: string
+      overlayDesc: string
     }
     plugins: {
       title: string
@@ -1803,8 +1829,10 @@ export interface Translations {
       annotateTitle: string
       annotateHint: string
       notesTitle: string
-      notesEmpty: string
-      notePlaceholder: (label: string) => string
+      notesPlaceholder: string
+      /** Per-image note prefix, separator included — "Image 2: " / "图2:". */
+      noteLabel: (n: number) => string
+      marksCount: (n: number) => string
       toolRect: string
       toolArrow: string
       toolPen: string

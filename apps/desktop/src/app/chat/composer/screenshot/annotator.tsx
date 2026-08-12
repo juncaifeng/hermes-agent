@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { notifyError } from '@/store/notifications'
@@ -12,19 +12,14 @@ import {
   type Annotation,
   type AnnotationShape,
   type AnnotationTool,
-  annotationsDraftText,
-  badgeAnchor,
-  badgeLabel,
   nextAnnotationId,
-  removeAnnotation,
-  setAnnotationDescription,
   shapeIsMeaningful
 } from './annotation-model'
 
 const STROKE = '#f43f5e'
 
-// Stroke/badge geometry scales with the image — a 3px ring reads fine on a
-// laptop screenshot but vanishes on a 4K full-screen capture.
+// Stroke geometry scales with the image — a 3px ring reads fine on a laptop
+// screenshot but vanishes on a 4K full-screen capture.
 function scaleFor(width: number, height: number): number {
   return Math.max(1, Math.max(width, height) / 900)
 }
@@ -74,38 +69,17 @@ function drawShape(ctx: CanvasRenderingContext2D, shape: AnnotationShape, s: num
   ctx.stroke()
 }
 
-function drawBadge(ctx: CanvasRenderingContext2D, shape: AnnotationShape, label: string, s: number) {
-  const r = 12 * s
-  const anchor = badgeAnchor(shape)
-  // Sit just above-left of the mark, clamped into the image.
-  const cx = Math.max(r, anchor.x - r * 0.6)
-  const cy = Math.max(r, anchor.y - r * 0.6)
-
-  ctx.beginPath()
-  ctx.arc(cx, cy, r, 0, Math.PI * 2)
-  ctx.fillStyle = STROKE
-  ctx.fill()
-  ctx.lineWidth = 1.5 * s
-  ctx.strokeStyle = '#ffffff'
-  ctx.stroke()
-
-  ctx.fillStyle = '#ffffff'
-  ctx.font = `700 ${13 * s}px system-ui, sans-serif`
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(label, cx, cy + 0.5 * s)
-}
-
 export interface ScreenshotAnnotatorProps {
   imageDataUrl: string
   onCancel: () => void
-  onDone: (blob: Blob, notesText: string) => void
+  /** Raw (untrimmed) sidebar text; the caller owns numbering and formatting. */
+  onDone: (blob: Blob, description: string) => void
   open: boolean
 }
 
-// PDF-review-style annotation: draw marks (rect/arrow/pen) directly on the
-// screenshot; each mark auto-numbers (①②③ painted on the image) and gets a
-// note field in the sidebar. Done flattens image + marks to one PNG.
+// Mark up a screenshot: draw shapes (rect/arrow/pen) directly on the image,
+// describe the IMAGE once in the sidebar. Done flattens image + marks to one
+// PNG. Numbering is per image ("图N") and happens at insert time, not here.
 export function ScreenshotAnnotator({ imageDataUrl, onCancel, onDone, open }: ScreenshotAnnotatorProps) {
   const { t } = useI18n()
   const copy = t.composer.screenshot
@@ -114,12 +88,13 @@ export function ScreenshotAnnotator({ imageDataUrl, onCancel, onDone, open }: Sc
   const [tool, setTool] = useState<AnnotationTool>('rect')
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [draft, setDraft] = useState<AnnotationShape | null>(null)
+  const [description, setDescription] = useState('')
   const [finishing, setFinishing] = useState(false)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const drawing = useRef(false)
 
-  // Reset per screenshot: a new capture starts with a clean mark list.
+  // Reset per screenshot: a new capture starts with a clean slate.
   useEffect(() => {
     if (!open) {
       return
@@ -127,6 +102,7 @@ export function ScreenshotAnnotator({ imageDataUrl, onCancel, onDone, open }: Sc
 
     setAnnotations([])
     setDraft(null)
+    setDescription('')
     setTool('rect')
     setImage(null)
 
@@ -161,10 +137,7 @@ export function ScreenshotAnnotator({ imageDataUrl, onCancel, onDone, open }: Sc
 
     ctx.clearRect(0, 0, w, h)
     ctx.drawImage(image, 0, 0)
-    annotations.forEach((a, i) => {
-      drawShape(ctx, a.shape, s)
-      drawBadge(ctx, a.shape, badgeLabel(i), s)
-    })
+    annotations.forEach(a => drawShape(ctx, a.shape, s))
 
     if (draft) {
       drawShape(ctx, draft, s)
@@ -220,7 +193,7 @@ export function ScreenshotAnnotator({ imageDataUrl, onCancel, onDone, open }: Sc
 
     setDraft(current => {
       if (current && shapeIsMeaningful(current)) {
-        setAnnotations(list => [...list, { description: '', id: nextAnnotationId(list), shape: current }])
+        setAnnotations(list => [...list, { id: nextAnnotationId(list), shape: current }])
       }
 
       return null
@@ -244,7 +217,7 @@ export function ScreenshotAnnotator({ imageDataUrl, onCancel, onDone, open }: Sc
         return
       }
 
-      onDone(blob, annotationsDraftText(annotations))
+      onDone(blob, description)
     }, 'image/png')
   }
 
@@ -300,7 +273,7 @@ export function ScreenshotAnnotator({ imageDataUrl, onCancel, onDone, open }: Sc
             </div>
           </div>
 
-          <aside className="flex w-60 shrink-0 flex-col gap-2 overflow-y-auto">
+          <aside className="flex w-60 shrink-0 flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-secondary)">
                 {copy.notesTitle}
@@ -315,36 +288,18 @@ export function ScreenshotAnnotator({ imageDataUrl, onCancel, onDone, open }: Sc
               </Button>
             </div>
 
-            {annotations.length === 0 ? (
+            <Textarea
+              aria-label={copy.notesTitle}
+              className="min-h-24 flex-1"
+              onChange={event => setDescription(event.target.value)}
+              placeholder={copy.notesPlaceholder}
+              value={description}
+            />
+
+            {annotations.length > 0 && (
               <p className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-quaternary)">
-                {copy.notesEmpty}
+                {copy.marksCount(annotations.length)}
               </p>
-            ) : (
-              annotations.map((a, i) => (
-                <div className="flex items-center gap-1.5" key={a.id}>
-                  <span className="shrink-0 text-sm" aria-hidden>
-                    {badgeLabel(i)}
-                  </span>
-                  <Input
-                    aria-label={copy.notePlaceholder(badgeLabel(i))}
-                    onChange={event => setAnnotations(list => setAnnotationDescription(list, a.id, event.target.value))}
-                    placeholder={copy.notePlaceholder(badgeLabel(i))}
-                    size="sm"
-                    value={a.description}
-                  />
-                  <Tip label={t.common.delete}>
-                    <Button
-                      aria-label={`${t.common.delete} ${badgeLabel(i)}`}
-                      className="shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => setAnnotations(list => removeAnnotation(list, a.id))}
-                      size="icon"
-                      variant="ghost"
-                    >
-                      <Codicon name="close" size="0.8rem" />
-                    </Button>
-                  </Tip>
-                </div>
-              ))
             )}
           </aside>
         </div>

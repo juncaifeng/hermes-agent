@@ -13,6 +13,7 @@ export type SettingsView =
   | 'notifications'
   | 'plugins'
   | 'providers'
+  | 'screenshots'
   | 'sessions'
   | 'skills-dirs'
   | `config:${string}`

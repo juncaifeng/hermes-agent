@@ -41,6 +41,8 @@ function installBridge() {
 }
 
 async function renderButton() {
+  const { mainComposerScope } = await import('@/store/composer')
+  mainComposerScope.clear()
   const { ScreenshotButton } = await import('./index')
   let result: ReturnType<typeof render>
 
@@ -93,7 +95,7 @@ describe('ScreenshotButton', () => {
     expect(listWindows).toHaveBeenCalledTimes(1)
   })
 
-  it('captures the picked window, then inserts the image and numbered notes', async () => {
+  it('captures the picked window, then inserts the image and its numbered note', async () => {
     installBridge()
     await renderButton()
 
@@ -112,11 +114,60 @@ describe('ScreenshotButton', () => {
     const blob = new Blob(['png-bytes'], { type: 'image/png' })
 
     await act(async () => {
-      annotatorProps!.onDone(blob, '① fix the button')
+      annotatorProps!.onDone(blob, 'fix the button')
     })
 
     expect(onAttachImageBlob).toHaveBeenCalledWith(blob)
-    expect(onInsertText).toHaveBeenCalledWith('① fix the button')
+    expect(onInsertText).toHaveBeenCalledWith('Image 1: fix the button')
+  })
+
+  it('numbers the note by images already in the draft', async () => {
+    installBridge()
+    await renderButton()
+
+    const { mainComposerScope } = await import('@/store/composer')
+    // Seeded AFTER render: renderButton resets the draft attachments.
+    mainComposerScope.add({ id: 'image-1', kind: 'image', label: 'prior.png' })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Screenshot' }))
+    })
+    await screen.findByText('a.txt')
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('a.txt'))
+    })
+    await screen.findByTestId('annotator-open')
+
+    await act(async () => {
+      annotatorProps!.onDone(new Blob(['x'], { type: 'image/png' }), 'second shot')
+    })
+
+    expect(onInsertText).toHaveBeenCalledWith('Image 2: second shot')
+  })
+
+  it('attaches without draft text when the description is blank', async () => {
+    installBridge()
+    await renderButton()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Screenshot' }))
+    })
+    await screen.findByText('a.txt')
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('a.txt'))
+    })
+    await screen.findByTestId('annotator-open')
+
+    const blob = new Blob(['x'], { type: 'image/png' })
+
+    await act(async () => {
+      annotatorProps!.onDone(blob, '   ')
+    })
+
+    expect(onAttachImageBlob).toHaveBeenCalledWith(blob)
+    expect(onInsertText).not.toHaveBeenCalled()
   })
 
   it('does not touch the draft when the attachment fails', async () => {

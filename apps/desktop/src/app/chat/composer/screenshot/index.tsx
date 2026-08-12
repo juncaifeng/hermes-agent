@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -10,8 +10,10 @@ import { triggerHaptic } from '@/lib/haptics'
 import { notifyError } from '@/store/notifications'
 
 import { GHOST_ICON_BTN } from '../controls'
+import { useComposerScope } from '../scope'
 
 import { ScreenshotAnnotator } from './annotator'
+import { imageNoteNumber, imageNoteText } from './annotation-model'
 import { groupWindowsByProcess, UNKNOWN_PROCESS } from './window-list'
 
 interface ScreenshotButtonProps {
@@ -24,10 +26,11 @@ type Stage = 'closed' | 'picking' | 'capturing' | 'annotating'
 
 // Composer quick screenshot: pick a running window (or the whole screen) →
 // capture via the Rust bridge → annotate → insert as a normal image
-// attachment, with the numbered notes appended to the draft.
+// attachment, with the image's numbered note (图N) appended to the draft.
 export function ScreenshotButton({ disabled, onAttachImageBlob, onInsertText }: ScreenshotButtonProps) {
   const { t } = useI18n()
   const copy = t.composer.screenshot
+  const scope = useComposerScope()
 
   const [stage, setStage] = useState<Stage>('closed')
   const [windows, setWindows] = useState<HermesWindowInfo[] | null>(null)
@@ -38,6 +41,19 @@ export function ScreenshotButton({ disabled, onAttachImageBlob, onInsertText }: 
   // entry point entirely rather than offering a button that always errors.
   const available = Boolean(bridge?.listWindows && bridge?.captureWindow && onAttachImageBlob)
 
+  const openPicker = useCallback(async () => {
+    triggerHaptic('open')
+    setStage('picking')
+    setWindows(null)
+
+    try {
+      setWindows(await window.hermesDesktop!.listWindows!())
+    } catch (err) {
+      notifyError(err, copy.failedTitle)
+      setStage('closed')
+    }
+  }, [copy.failedTitle])
+
   if (!available) {
     return null
   }
@@ -45,19 +61,6 @@ export function ScreenshotButton({ disabled, onAttachImageBlob, onInsertText }: 
   const close = () => {
     setStage('closed')
     setShot(null)
-  }
-
-  const openPicker = async () => {
-    triggerHaptic('open')
-    setStage('picking')
-    setWindows(null)
-
-    try {
-      setWindows(await bridge!.listWindows!())
-    } catch (err) {
-      notifyError(err, copy.failedTitle)
-      setStage('closed')
-    }
   }
 
   const pick = async (id: string) => {
@@ -75,15 +78,18 @@ export function ScreenshotButton({ disabled, onAttachImageBlob, onInsertText }: 
     }
   }
 
-  const finish = async (blob: Blob, notesText: string) => {
+  const finish = async (blob: Blob, description: string) => {
     close()
 
+    // Number BEFORE attaching — afterwards the new image is already counted.
+    const imageCount = scope.attachments.$attachments.get().filter(a => a.kind === 'image').length
+    const text = imageNoteText(copy.noteLabel(imageNoteNumber(imageCount)), description)
     const attached = await onAttachImageBlob!(blob)
 
-    // Only annotate the draft when the image actually landed — numbered
-    // notes with no screenshot would read as dangling references.
-    if (attached !== false && notesText) {
-      onInsertText(notesText)
+    // Only annotate the draft when the image actually landed — a numbered
+    // note with no screenshot would read as a dangling reference.
+    if (attached !== false && text) {
+      onInsertText(text)
     }
   }
 

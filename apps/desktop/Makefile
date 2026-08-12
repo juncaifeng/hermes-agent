@@ -11,11 +11,15 @@
 #   make -C apps/desktop run      # bare-exe run with CDP debugging (uses staged dist)
 #   make -C apps/desktop verify   # CDP e2e: loopback origin + gateway boot
 
-MINGW_BIN := /e/mingw64/bin
-WIX_BIN   := /c/Program Files (x86)/WiX Toolset v3.14/bin
+MINGW_BIN := E:\mingw64\bin
 WIX_DIR   := C:\Program Files (x86)\WiX Toolset v3.14
+WIX_BIN   := C:\Program Files (x86)\WiX Toolset v3.14\bin
 
-export PATH := $(MINGW_BIN):$(WIX_BIN):$(PATH)
+# PATH must be Windows-form (semicolons) here: mingw32-make is a native
+# Windows binary, and cargo/windres/WiX are native children — a unix-form
+# export (/e/mingw64/bin:...) silently drops windres and tauri-winres panics
+# with NotAttempted("windres"). The recipe shell (sh) converts it back.
+export PATH := $(MINGW_BIN);$(WIX_BIN);C:\Windows\System32;$(PATH)
 export WIX  := $(WIX_DIR)
 
 TAURI_DIR := src-tauri
@@ -23,7 +27,10 @@ RELEASE   := $(TAURI_DIR)/target/release
 VERSION   := $(shell python -c "import json;print(json.load(open('$(TAURI_DIR)/tauri.conf.json'))['version'])" 2>/dev/null)
 MSI       := $(RELEASE)/bundle/msi/Hermes_$(VERSION)_x64_en-US.msi
 
-.PHONY: check build stage-dist exe msi run verify clean
+.PHONY: check-env check build stage-dist exe msi run verify clean
+
+check-env: ## verify the build toolchain is reachable (windres / WiX / node / cargo)
+	where windres && where candle.exe && where light.exe && node --version && cargo --version
 
 check: ## cargo check, dev + release profiles (the release profile compiles prod-only cfg blocks)
 	cd $(TAURI_DIR) && cargo check && cargo check --release

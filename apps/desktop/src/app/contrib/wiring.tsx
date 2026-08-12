@@ -71,6 +71,7 @@ import { useSkinCommand } from '@/themes/use-skin-command'
 
 import { closeWorkspaceTab } from '../chat/close-tab'
 import { requestComposerInsert } from '../chat/composer/focus'
+import { OverlayScreenshotHost } from '../chat/composer/screenshot/overlay-host'
 import { useComposerActions } from '../chat/hooks/use-composer-actions'
 import { CommandPalette } from '../command-palette'
 import { useGatewayBoot } from '../gateway/hooks/use-gateway-boot'
@@ -1032,6 +1033,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       <CommandPalette />
       <PetGenerateOverlay />
       <SessionSwitcher />
+      <OverlayScreenshotHost />
       <FileActionDialogs />
       <RemoteFolderPicker />
       <FindBar />

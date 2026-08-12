@@ -2,47 +2,21 @@ import { describe, expect, it } from 'vitest'
 
 import {
   type Annotation,
-  annotationsDraftText,
-  badgeAnchor,
-  badgeLabel,
+  imageNoteNumber,
+  imageNoteText,
   nextAnnotationId,
-  removeAnnotation,
-  setAnnotationDescription,
   shapeIsMeaningful
 } from './annotation-model'
 
-function ann(id: number, description = ''): Annotation {
-  return { description, id, shape: { kind: 'rect', x0: 0, x1: 10, y0: 0, y1: 10 } }
+function ann(id: number): Annotation {
+  return { id, shape: { kind: 'rect', x0: 0, x1: 10, y0: 0, y1: 10 } }
 }
 
-describe('badgeLabel', () => {
-  it('uses circled digits for the first twenty marks', () => {
-    expect(badgeLabel(0)).toBe('①')
-    expect(badgeLabel(2)).toBe('③')
-    expect(badgeLabel(19)).toBe('⑳')
-  })
-
-  it('falls back to a plain number past twenty', () => {
-    expect(badgeLabel(20)).toBe('21)')
-  })
-})
-
-describe('list operations', () => {
-  it('assigns ids one past the current max (ids only key the live list, so a freed id may be reused)', () => {
+describe('nextAnnotationId', () => {
+  it('assigns ids one past the current max', () => {
     expect(nextAnnotationId([ann(1), ann(2)])).toBe(3)
     expect(nextAnnotationId([ann(1)])).toBe(2)
     expect(nextAnnotationId([])).toBe(1)
-  })
-
-  it('removes a single mark by id', () => {
-    const list = [ann(1), ann(2), ann(3)]
-    expect(removeAnnotation(list, 2).map(a => a.id)).toEqual([1, 3])
-  })
-
-  it('updates only the targeted description', () => {
-    const list = setAnnotationDescription([ann(1), ann(2)], 2, 'fixed')
-    expect(list[0].description).toBe('')
-    expect(list[1].description).toBe('fixed')
   })
 })
 
@@ -67,37 +41,26 @@ describe('shapeIsMeaningful', () => {
   })
 })
 
-describe('badgeAnchor', () => {
-  it('anchors rects/arrows at their top-left corner regardless of drag direction', () => {
-    expect(badgeAnchor({ kind: 'rect', x0: 50, y0: 60, x1: 10, y1: 20 })).toEqual({ x: 10, y: 20 })
+describe('imageNoteNumber', () => {
+  it('numbers by existing image count: empty draft → 1, one image → 2', () => {
+    expect(imageNoteNumber(0)).toBe(1)
+    expect(imageNoteNumber(1)).toBe(2)
+    expect(imageNoteNumber(3)).toBe(4)
   })
 
-  it('anchors pen strokes at their first point', () => {
-    expect(
-      badgeAnchor({
-        kind: 'pen',
-        points: [
-          { x: 7, y: 9 },
-          { x: 1, y: 1 }
-        ]
-      })
-    ).toEqual({ x: 7, y: 9 })
+  it('never goes below 1 on garbage input', () => {
+    expect(imageNoteNumber(-5)).toBe(1)
   })
 })
 
-describe('annotationsDraftText', () => {
-  it('numbers notes by display position and skips undescribed marks', () => {
-    const list = [ann(1, 'first'), ann(2, ''), ann(3, '  padded  ')]
-    expect(annotationsDraftText(list)).toBe('① first\n③ padded')
+describe('imageNoteText', () => {
+  it('joins the localized prefix with the trimmed description', () => {
+    expect(imageNoteText('图1:', '  看这里  ')).toBe('图1:看这里')
+    expect(imageNoteText('Image 2: ', 'check this')).toBe('Image 2: check this')
   })
 
-  it('renumbers after a middle deletion so image and notes stay in lockstep', () => {
-    const list = removeAnnotation([ann(1, 'first'), ann(2, 'second'), ann(3, 'third')], 2)
-    expect(annotationsDraftText(list)).toBe('① first\n② third')
-  })
-
-  it('is empty when nothing is described', () => {
-    expect(annotationsDraftText([ann(1), ann(2)])).toBe('')
-    expect(annotationsDraftText([])).toBe('')
+  it('yields no text for an empty description (image still attaches)', () => {
+    expect(imageNoteText('图1:', '')).toBe('')
+    expect(imageNoteText('图1:', '   ')).toBe('')
   })
 })

@@ -13,6 +13,7 @@ import {
   Download,
   FolderOpen,
   Globe,
+  ImageIcon,
   Info,
   Keyboard,
   KeyRound,
@@ -43,6 +44,7 @@ import { NotificationsSettings } from './notifications-settings'
 import { PluginsSettings } from './plugins-settings'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
 import { SessionsSettings } from './sessions-settings'
+import { ScreenshotsSettings } from './screenshots-settings'
 import { SkillsDirsSettings } from './skills-dirs-settings'
 import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
 
@@ -56,6 +58,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   'billing',
   'plugins',
   'skills-dirs',
+  'screenshots',
   'sessions',
   'about'
 ]
@@ -254,6 +257,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         onSelect: () => setActiveView('skills-dirs')
       },
       {
+        active: activeView === 'screenshots',
+        icon: ImageIcon,
+        id: 'screenshots',
+        label: t.settings.nav.screenshots,
+        onSelect: () => setActiveView('screenshots')
+      },
+      {
         active: activeView === 'sessions',
         icon: Archive,
         id: 'sessions',
@@ -342,6 +352,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             <PluginsSettings />
           ) : activeView === 'skills-dirs' ? (
             <SkillsDirsSettings onConfigSaved={onConfigSaved} />
+          ) : activeView === 'screenshots' ? (
+            <ScreenshotsSettings />
           ) : (
             <SessionsSettings />
           )}

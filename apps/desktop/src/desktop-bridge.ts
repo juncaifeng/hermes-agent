@@ -168,6 +168,20 @@ if (isTauri) {
     // 'screen' for the full virtual screen) as a base64 PNG.
     listWindows: () => invoke<any[]>('list_windows'),
     captureWindow: (id: string) => invoke<string>('capture_window', { id }),
+    // Screenshot management: dir stats / guarded cleanup / git-exclude /
+    // floating capture button.
+    screenshotDirStats: (projectDir?: string | null) =>
+      invoke<any[]>('screenshot_dir_stats', { projectDir: projectDir ?? null }),
+    clearScreenshotDir: (path: string) => invoke<any>('clear_screenshot_dir', { path }),
+    excludePathFromGit: (repoPath: string, relEntry: string) =>
+      invoke<string>('exclude_path_from_git', { repoPath, relEntry }),
+    setScreenshotOverlayEnabled: (enabled: boolean) =>
+      invoke<void>('set_screenshot_overlay_enabled', { enabled }),
+    moveScreenshotOverlayBy: (dx: number, dy: number) =>
+      invoke<void>('move_screenshot_overlay_by', { dx, dy }),
+    saveScreenshotOverlayPosition: () => invoke<void>('save_screenshot_overlay_position'),
+    triggerQuickScreenshot: () => invoke<void>('trigger_quick_screenshot'),
+    onQuickScreenshot: (cb: () => void) => on('hermes:quick-screenshot', cb),
     desktopPluginsRoot: () => invoke<string | null>('desktop_plugins_root'),
     renamePath: (path: string, name: string) => invoke<any>('rename_path', { path, name }),
     trashPath: (path: string) => invoke<void>('trash_path', { path }),
@@ -176,8 +190,9 @@ if (isTauri) {
     readClipboard: () => invoke<string>('read_clipboard'),
     saveImageFromUrl: () => Promise.resolve({ ok: true }),
     // Bytes cross the IPC as base64 — a JSON number-array of a multi-MB
-    // screenshot is ~7x fatter and slower to (de)serialize.
-    saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string) => {
+    // screenshot is ~7x fatter and slower to (de)serialize. `dir` (absolute)
+    // overrides the default app-data composer-images target (project mode).
+    saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string, dir?: string) => {
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
       let binary = ''
       const CHUNK = 0x8000
@@ -186,7 +201,7 @@ if (isTauri) {
         binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
       }
 
-      return invoke<string>('save_image_buffer', { dataBase64: btoa(binary), ext })
+      return invoke<string>('save_image_buffer', { dataBase64: btoa(binary), ext, dir: dir ?? null })
     },
     saveClipboardImage: () => Promise.resolve({ ok: true }),
     getPathForFile: () => '',

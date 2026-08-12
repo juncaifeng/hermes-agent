@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 
 import { requestComposerFocus, requestComposerInsert, requestComposerInsertRefs } from '@/app/chat/composer/focus'
 import { droppedFileInlineRef } from '@/app/chat/composer/inline-refs'
+import { resolveScreenshotDir } from '@/app/chat/composer/screenshot/save-dir'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { useI18n } from '@/i18n'
 import { attachmentId, contextPath, pathLabel } from '@/lib/chat-runtime'
@@ -14,6 +15,7 @@ import {
   setComposerTerminalSelection
 } from '@/store/composer'
 import { notify, notifyError } from '@/store/notifications'
+import { $screenshotDirMode } from '@/store/screenshots'
 
 import type { ImageDetachResponse } from '../../types'
 
@@ -447,7 +449,10 @@ export function useComposerActions({
       try {
         const buffer = await blob.arrayBuffer()
         const data = new Uint8Array(buffer)
-        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, blobExtension(blob))
+        // Project screenshot mode lands the file in <workspace>/.hermes/
+        // screenshots; app-data (or a detached session) leaves dir undefined.
+        const dir = resolveScreenshotDir($screenshotDirMode.get(), currentCwd)
+        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, blobExtension(blob), dir)
 
         if (!savedPath) {
           notify({ kind: 'error', title: copy.imageAttach, message: copy.imageWriteFailed })
@@ -462,7 +467,7 @@ export function useComposerActions({
         return false
       }
     },
-    [attachImagePath, copy.imageAttach, copy.imageAttachFailed, copy.imageWriteFailed]
+    [attachImagePath, copy.imageAttach, copy.imageAttachFailed, copy.imageWriteFailed, currentCwd]
   )
 
   const pickImages = useCallback(async () => {

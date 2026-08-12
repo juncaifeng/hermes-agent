@@ -8,6 +8,9 @@ import './store/active-work'
 import './store/power'
 // Side-effect: applies the persisted window translucency on load.
 import './store/translucency'
+// Side-effect: keeps the floating quick-screenshot button in step with its
+// setting (main window only), and routes its picker event into the composer.
+import './store/screenshot-overlay-sync'
 // Dev-only render/state churn counters. MUST precede the `react-dom` import
 // below: react-dom captures the devtools hook at module init, so bippy has to
 // install during THIS import's evaluation or every commit goes unseen
@@ -48,6 +51,8 @@ if (winParam === 'overlay') {
   void import('./app/quick-entry/quick-entry-root').then(({ mountQuickEntry }) => mountQuickEntry())
 } else if (winParam === 'wake') {
   void import('./app/wake-indicator/wake-indicator-root').then(({ mountWakeIndicator }) => mountWakeIndicator())
+} else if (winParam === 'screenshot-overlay') {
+  void import('./app/screenshot-overlay/overlay-root').then(({ mountScreenshotOverlay }) => mountScreenshotOverlay())
 } else {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

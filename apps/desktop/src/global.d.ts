@@ -138,7 +138,7 @@ declare global {
       writeClipboard: (text: string) => Promise<boolean>
       readClipboard: () => Promise<string>
       saveImageFromUrl: (url: string) => Promise<boolean>
-      saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string) => Promise<string>
+      saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string, dir?: string) => Promise<string>
       saveClipboardImage: () => Promise<string>
       /** Quick screenshot: visible top-level windows (own process excluded).
        *  Windows-only; rejects with 'unsupported' elsewhere. */
@@ -146,6 +146,20 @@ declare global {
       /** Capture one window (or 'screen' for the full virtual screen) as a
        *  base64 PNG. Rejects with a human-readable reason on failure. */
       captureWindow?: (id: string) => Promise<string>
+      /** Size/count for each managed screenshot dir (app-data always, project
+       *  when the workspace root is passed). */
+      screenshotDirStats?: (projectDir?: null | string) => Promise<HermesScreenshotDirStat[]>
+      /** Empty ONE managed screenshot dir (whitelist-guarded server-side). */
+      clearScreenshotDir?: (path: string) => Promise<HermesScreenshotCleanResult>
+      /** Idempotently append to <repo>/.git/info/exclude. 'added' | 'already-present'. */
+      excludePathFromGit?: (repoPath: string, relEntry: string) => Promise<string>
+      /** Floating quick-capture button (secondary always-on-top window). */
+      setScreenshotOverlayEnabled?: (enabled: boolean) => Promise<void>
+      moveScreenshotOverlayBy?: (dx: number, dy: number) => Promise<void>
+      saveScreenshotOverlayPosition?: () => Promise<void>
+      /** Overlay click → focus main window + fire the picker event. */
+      triggerQuickScreenshot?: () => Promise<void>
+      onQuickScreenshot?: (callback: () => void) => () => void
       getPathForFile: (file: File) => string
       normalizePreviewTarget: (target: string, baseDir?: string) => Promise<HermesPreviewTarget | null>
       watchPreviewFile: (url: string) => Promise<HermesPreviewWatch>
@@ -935,6 +949,22 @@ export interface HermesWindowInfo {
   /** Process image file name (e.g. "notepad.exe"); may be empty. */
   process: string
   title: string
+}
+
+/** One managed screenshot directory's usage, from screenshotDirStats. */
+export interface HermesScreenshotDirStat {
+  bytes: number
+  exists: boolean
+  files: number
+  /** 'app_data' | 'project' */
+  kind: string
+  path: string
+}
+
+export interface HermesScreenshotCleanResult {
+  freed_bytes: number
+  path: string
+  removed_files: number
 }
 
 export interface HermesPreviewFileChanged {
