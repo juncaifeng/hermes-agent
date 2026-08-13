@@ -308,8 +308,13 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, String> {
 }
 
 /// `hermes:captureWindow` — base64 PNG of one window (or `"screen"` for the
-/// full virtual screen).
+/// full virtual screen). Async: the full-screen path briefly hides the
+/// quick-capture overlay and sleeps a beat for the compositor — that wait
+/// must not sit on the main thread.
 #[tauri::command]
-pub fn capture_window(id: String) -> Result<String, String> {
+pub async fn capture_window(app: tauri::AppHandle, id: String) -> Result<String, String> {
+    if id == "screen" {
+        return crate::screenshots::with_overlay_hidden(&app, || imp::capture_window(&id));
+    }
     imp::capture_window(&id)
 }

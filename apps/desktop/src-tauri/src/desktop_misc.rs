@@ -217,11 +217,18 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 }
 
 /// `hermes:saveImageBuffer` — persist a composer image (paste / drop /
-/// quick-screenshot) under `<app_data>/composer-images/` and return its path.
-/// Port of Electron's `writeComposerImage`; the renderer sends the bytes
-/// base64-encoded (JSON arrays of a multi-MB screenshot are needlessly fat).
+/// quick-screenshot) and return its path. Port of Electron's
+/// `writeComposerImage`; the renderer sends the bytes base64-encoded (JSON
+/// arrays of a multi-MB screenshot are needlessly fat). `dir` overrides the
+/// default `<app_data>/composer-images/` target (project screenshot mode:
+/// `<workspace>/.hermes/screenshots/`, resolved renderer-side).
 #[tauri::command]
-pub fn save_image_buffer(app: AppHandle, data_base64: String, ext: String) -> Result<String, String> {
+pub fn save_image_buffer(
+    app: AppHandle,
+    data_base64: String,
+    ext: String,
+    dir: Option<String>,
+) -> Result<String, String> {
     use base64::Engine as _;
 
     let bytes = base64::engine::general_purpose::STANDARD
@@ -240,11 +247,20 @@ pub fn save_image_buffer(app: AppHandle, data_base64: String, ext: String) -> Re
         ".png".to_string()
     };
 
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("app data dir unavailable: {e}"))?
-        .join("composer-images");
+    let dir = match dir {
+        Some(d) if !d.trim().is_empty() => {
+            let d = PathBuf::from(d);
+            if !d.is_absolute() {
+                return Err("saveImageBuffer: dir must be absolute".to_string());
+            }
+            d
+        }
+        _ => app
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("app data dir unavailable: {e}"))?
+            .join("composer-images"),
+    };
     std::fs::create_dir_all(&dir).map_err(|e| format!("create composer-images dir: {e}"))?;
 
     let millis = std::time::SystemTime::now()
