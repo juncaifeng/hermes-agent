@@ -146,6 +146,9 @@ declare global {
       /** Capture one window (or 'screen' for the full virtual screen) as a
        *  base64 PNG. Rejects with a human-readable reason on failure. */
       captureWindow?: (id: string) => Promise<string>
+      /** Raise/focus the main window — called by the quick-capture flow AFTER
+       *  the exposure, so the shot never contains Hermes itself. */
+      focusMainWindow?: () => Promise<void>
       /** Size/count for each managed screenshot dir (app-data always, project
        *  when the workspace root is passed). */
       screenshotDirStats?: (projectDir?: null | string) => Promise<HermesScreenshotDirStat[]>

@@ -168,6 +168,7 @@ if (isTauri) {
     // 'screen' for the full virtual screen) as a base64 PNG.
     listWindows: () => invoke<any[]>('list_windows'),
     captureWindow: (id: string) => invoke<string>('capture_window', { id }),
+    focusMainWindow: () => invoke<void>('focus_main_window'),
     // Screenshot management: dir stats / guarded cleanup / git-exclude /
     // floating capture button.
     screenshotDirStats: (projectDir?: string | null) =>

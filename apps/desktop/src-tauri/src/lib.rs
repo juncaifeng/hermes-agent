@@ -9,6 +9,7 @@ mod commands;
 mod connection_config;
 mod desktop_misc;
 mod gateway;
+mod screenshots;
 mod tls_proxy;
 mod git;
 mod terminal;
@@ -83,6 +84,8 @@ pub fn run() {
                 if let tauri::WindowEvent::Destroyed = event {
                     let gw = window.state::<gateway::GatewayState>();
                     gateway::stop_gateway(&gw);
+                    // No orphan floating screenshot button.
+                    screenshots::on_main_window_destroyed(window.app_handle());
                 }
             }
         })
@@ -129,6 +132,15 @@ pub fn run() {
             // -- quick screenshot (composer window capture → annotate → attach) --
             capture::list_windows,
             capture::capture_window,
+            // -- screenshot management (dirs / cleanup / git-exclude / overlay) --
+            screenshots::screenshot_dir_stats,
+            screenshots::clear_screenshot_dir,
+            screenshots::exclude_path_from_git,
+            screenshots::set_screenshot_overlay_enabled,
+            screenshots::move_screenshot_overlay_by,
+            screenshots::save_screenshot_overlay_position,
+            screenshots::trigger_quick_screenshot,
+            screenshots::focus_main_window,
             desktop_misc::get_recent_logs,
             desktop_misc::reveal_logs,
             desktop_misc::desktop_plugins_root,

@@ -25,8 +25,12 @@ async function captureForAnnotation(): Promise<void> {
   }
 
   try {
-    // 'screen' self-hides the overlay for the exposure (Rust side).
+    // 'screen' self-hides the overlay for the exposure (Rust side). The main
+    // window is raised only AFTER the capture — surfacing it earlier would
+    // put Hermes itself in front of whatever the user wanted to shoot.
     const base64 = await bridge.captureWindow('screen')
+
+    await bridge.focusMainWindow?.().catch(() => undefined)
 
     $overlayScreenshotShot.set(`data:image/png;base64,${base64}`)
   } catch (err) {
