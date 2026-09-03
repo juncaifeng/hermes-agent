@@ -192,8 +192,9 @@ if (isTauri) {
     saveImageFromUrl: () => Promise.resolve({ ok: true }),
     // Bytes cross the IPC as base64 — a JSON number-array of a multi-MB
     // screenshot is ~7x fatter and slower to (de)serialize. `dir` (absolute)
-    // overrides the default app-data composer-images target (project mode).
-    saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string, dir?: string) => {
+    // overrides the default app-data composer-images target (project mode);
+    // `name` preserves the caller's original file name (upstream attach flow).
+    saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string, dir?: string, name?: string) => {
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
       let binary = ''
       const CHUNK = 0x8000
@@ -202,7 +203,12 @@ if (isTauri) {
         binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
       }
 
-      return invoke<string>('save_image_buffer', { dataBase64: btoa(binary), ext, dir: dir ?? null })
+      return invoke<string>('save_image_buffer', {
+        dataBase64: btoa(binary),
+        ext,
+        dir: dir ?? null,
+        name: name ?? null
+      })
     },
     saveClipboardImage: () => Promise.resolve({ ok: true }),
     getPathForFile: () => '',

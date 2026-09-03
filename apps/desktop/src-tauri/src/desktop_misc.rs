@@ -228,6 +228,7 @@ pub fn save_image_buffer(
     data_base64: String,
     ext: String,
     dir: Option<String>,
+    name: Option<String>,
 ) -> Result<String, String> {
     use base64::Engine as _;
 
@@ -268,7 +269,23 @@ pub fn save_image_buffer(
         .map(|d| d.as_millis())
         .unwrap_or(0);
     let suffix: u32 = rand::random();
-    let path = dir.join(format!("composer_{millis}_{suffix:08x}{safe_ext}"));
+    // Preferred file name from the caller (upstream feature: preserve the
+    // original File name on attach). Sanitized to a bare file name — path
+    // separators and traversal are stripped, extension forced to `safe_ext`.
+    let base = name
+        .as_deref()
+        .map(|n| {
+            n.rsplit(['/', '\\']).next().unwrap_or(n)
+        })
+        .map(|n| n.trim())
+        .filter(|n| !n.is_empty() && *n != "." && *n != "..")
+        .and_then(|n| Path::new(n).file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .filter(|s| !s.is_empty());
+    let file_name = match base {
+        Some(b) => format!("{b}_{millis}_{suffix:08x}{safe_ext}"),
+        None => format!("composer_{millis}_{suffix:08x}{safe_ext}"),
+    };
+    let path = dir.join(file_name);
     std::fs::write(&path, &bytes).map_err(|e| format!("write composer image: {e}"))?;
 
     Ok(path.to_string_lossy().to_string())
