@@ -145,14 +145,32 @@ fn spawn_actor(app: AppHandle) -> Result<mpsc::Sender<ActorMsg>, String> {
     let script = sidecar_script_path();
     let cwd = sidecar_working_dir();
 
+    // Debug: write to file so we can see it even if stderr is swallowed
+    let script_exists = std::path::Path::new(&script).exists();
+    let cwd_exists = cwd.exists();
+    let debug_info = format!(
+        "node={:?}\nscript={:?}\nscript_exists={}\ncwd={:?}\ncwd_exists={}\n",
+        node, script, script_exists, cwd, cwd_exists
+    );
+    let _ = std::fs::write(r"E:\git\hermes-agent\terminal_debug.txt", &debug_info);
+    eprintln!("[terminal] spawn_actor node={node:?} script={script:?} cwd={cwd:?}");
+
     let mut child = Command::new(&node)
         .arg(&script)
-        .current_dir(cwd)
+        .current_dir(&cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("failed to spawn terminal sidecar: {e}"))?;
+        .map_err(|e| {
+            let err_detail = format!(
+                "spawn error: {}, kind={:?}, raw_os={:?}",
+                e, e.kind(), e.raw_os_error()
+            );
+            let _ = std::fs::write(r"E:\git\hermes-agent\terminal_spawn_error.txt", &err_detail);
+            eprintln!("[terminal] {}", err_detail);
+            format!("failed to spawn terminal sidecar: {e} (kind={:?}, raw_os={:?})", e.kind(), e.raw_os_error())
+        })?;
 
     let stdin = child
         .stdin

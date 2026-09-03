@@ -1,16 +1,24 @@
 //! Hermes Desktop — managed headless gateway (`hermes serve`) process.
 //!
-//! On app startup we spawn the Python gateway as a `uv tool`-installed
-//! executable (`hermes serve --host 127.0.0.1 --port 0`). The gateway prints a
-//! `HERMES_BACKEND_READY port=<N>` (or legacy `HERMES_DASHBOARD_READY port=<N>`)
-//! sentinel on stdout once uvicorn binds its ephemeral socket; we parse that
-//! line and rewrite the shared [`BackendState`] so the renderer's
-//! `getConnection` resolves the real port. This mirrors the Electron
-//! `electron/backend-ready.ts` flow.
+//! On app startup we spawn the Python gateway. Resolution order:
+//!   0. bundled backend (MSI resource `<resource_dir>/hermes-backend/` — a
+//!      python-build-standalone runtime + `launch.py` shim produced by
+//!      `scripts/build-backend.ps1`, also picked up from the repo layout in
+//!      `tauri dev`)
+//!   1. `HERMES_DESKTOP_HERMES` env override
+//!   2. `%USERPROFILE%\.local\bin\hermes.exe` (uv tool install location)
+//!   3. `hermes(.exe)` on `PATH`
+//!   4. first-run bootstrap via `uv tool install hermes-agent`
 //!
-//! If no runnable `hermes` executable can be found, the gateway is left
-//! unmanaged and `BackendState` keeps its default `http://127.0.0.1:8080`
-//! target (a user who starts a backend themselves still connects).
+//! The gateway prints a `HERMES_BACKEND_READY port=<N>` (or legacy
+//! `HERMES_DASHBOARD_READY port=<N>`) sentinel on stdout once uvicorn binds
+//! its ephemeral socket; we parse that line and rewrite the shared
+//! [`BackendState`] so the renderer's `getConnection` resolves the real port.
+//! This mirrors the Electron `electron/backend-ready.ts` flow.
+//!
+//! If no runnable backend can be found, the gateway is left unmanaged and
+//! `BackendState` keeps its default `http://127.0.0.1:8080` target (a user who
+//! starts a backend themselves still connects).
 
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -37,24 +45,66 @@ pub struct GatewayState {
 /// `DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS`).
 const PORT_ANNOUNCE_TIMEOUT_MS: u64 = 90_000;
 
-/// Locate a runnable `hermes` executable:
-///   0. bundled backend (MSI resource: `<resource_dir>/hermes-backend/`)
+/// How to launch the gateway: the program plus the argv that must precede the
+/// `serve` subcommand. For a hermes CLI executable `pre_args` is empty; for the
+/// bundled python-build-standalone backend it is the `launch.py` shim path.
+struct HermesLaunch {
+    program: PathBuf,
+    pre_args: Vec<String>,
+}
+
+impl HermesLaunch {
+    fn exe(path: PathBuf) -> Self {
+        Self { program: path, pre_args: Vec::new() }
+    }
+}
+
+/// Bundled backend (scripts/build-backend.ps1 output): a relocatable CPython
+/// runtime under `<base>/python/` plus a `launch.py` shim. Checked both in the
+/// MSI resource dir and, for `tauri dev`, the repo checkout layout.
+fn resolve_bundled_backend(app: &AppHandle) -> Option<HermesLaunch> {
+    let mut bases: Vec<PathBuf> = Vec::new();
+    // Installed deployment: resource dir mapped from
+    // tauri.conf.json `resources["../backend-dist/hermes-backend"]`.
+    if let Ok(res_dir) = app.path().resource_dir() {
+        bases.push(res_dir.join("hermes-backend"));
+    }
+    // Dev: repo layout, so `tauri dev` picks a locally built bundle without
+    // installing the MSI. Harmless in release builds (path won't exist).
+    bases.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("backend-dist")
+            .join("hermes-backend"),
+    );
+
+    let exe = if cfg!(windows) { "python.exe" } else { "python" };
+    for base in bases {
+        let python = base.join("python").join(exe);
+        let shim = base.join("launch.py");
+        if python.is_file() && shim.is_file() {
+            return Some(HermesLaunch {
+                program: python,
+                pre_args: vec![shim.to_string_lossy().into_owned()],
+            });
+        }
+    }
+    None
+}
+
+/// Locate a runnable `hermes` backend:
+///   0. bundled backend (MSI resource / dev repo layout)
 ///   1. `HERMES_DESKTOP_HERMES` env override
 ///   2. `%USERPROFILE%\.local\bin\hermes.exe` (uv tool install location)
 ///   3. `hermes(.exe)` on `PATH`
-fn resolve_hermes_binary(app: &AppHandle) -> Option<PathBuf> {
-    // 0. MSI-bundled backend — the primary path for installed deployments;
-    //    ships with the app so machines without a hermes CLI can still boot.
-    if let Ok(res_dir) = app.path().resource_dir() {
-        let bundled = res_dir.join("hermes-backend").join("hermes-backend.exe");
-        if bundled.is_file() {
-            return Some(bundled);
-        }
+fn resolve_hermes_binary(app: &AppHandle) -> Option<HermesLaunch> {
+    if let Some(launch) = resolve_bundled_backend(app) {
+        return Some(launch);
     }
     if let Ok(override_path) = std::env::var("HERMES_DESKTOP_HERMES") {
         let pb = PathBuf::from(&override_path);
         if pb.is_file() {
-            return Some(pb);
+            return Some(HermesLaunch::exe(pb));
         }
     }
 
@@ -64,7 +114,7 @@ fn resolve_hermes_binary(app: &AppHandle) -> Option<PathBuf> {
     {
         let pb = home.join(".local").join("bin").join("hermes.exe");
         if pb.is_file() {
-            return Some(pb);
+            return Some(HermesLaunch::exe(pb));
         }
     }
 
@@ -77,7 +127,7 @@ fn resolve_hermes_binary(app: &AppHandle) -> Option<PathBuf> {
         for dir in std::env::split_paths(&path) {
             let candidate = dir.join(exe);
             if candidate.is_file() {
-                return Some(candidate);
+                return Some(HermesLaunch::exe(candidate));
             }
         }
     }
@@ -122,7 +172,7 @@ fn resolve_uv() -> Option<PathBuf> {
 /// The default index (pypi.org) is tried first; if it fails — pypi.org is
 /// frequently unreachable from CN networks — we retry once against the TUNA
 /// mirror, which is the pragmatic default for Chinese users.
-fn bootstrap_backend(app: &AppHandle) -> Option<PathBuf> {
+fn bootstrap_backend(app: &AppHandle) -> Option<HermesLaunch> {
     let _ = app.emit("hermes:boot-progress", BootProgress::installing());
     let uv = resolve_uv()?;
     eprintln!("[gateway] bootstrapping backend via {uv:?} (uv tool install hermes-agent)");
@@ -187,7 +237,7 @@ pub fn spawn_gateway(app: AppHandle, state: BackendState) {
         // GatewayState is managed by Tauri ('static storage); grab it inside
         // the thread so the setup closure's borrow doesn't escape.
         let gw = app.state::<GatewayState>();
-        let Some(binary) = resolve_hermes_binary(&app).or_else(|| bootstrap_backend(&app)) else {
+        let Some(launch) = resolve_hermes_binary(&app).or_else(|| bootstrap_backend(&app)) else {
             eprintln!("[gateway] hermes executable not found; leaving default backend target");
             state.mark_ready(DEFAULT_BACKEND_BASE.to_string(), String::new());
             let _ = app.emit(
@@ -198,17 +248,24 @@ pub fn spawn_gateway(app: AppHandle, state: BackendState) {
             );
             return;
         };
+        let program = launch.program.clone();
 
         // Pin the session token the backend will serve; get_connection returns it
         // to the renderer for /api/ws auth.
         let token = generate_session_token();
 
         let mut child = {
-            let mut cmd = Command::new(&binary);
-            cmd.args(["serve", "--host", "127.0.0.1", "--port", "0"])
+            let mut cmd = Command::new(&launch.program);
+            cmd.args(&launch.pre_args)
+                .args(["serve", "--host", "127.0.0.1", "--port", "0"])
                 .env("HERMES_DESKTOP", "1")
                 .env("HERMES_SERVE_HEADLESS", "1")
                 .env("HERMES_DASHBOARD_SESSION_TOKEN", &token)
+                // Bundled-backend niceties: UTF-8 stdio regardless of the
+                // system codepage, and no read-only-site-packages bytecode
+                // writes (also set in launch.py for direct invocations).
+                .env("PYTHONUTF8", "1")
+                .env("PYTHONDONTWRITEBYTECODE", "1")
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
@@ -223,7 +280,7 @@ pub fn spawn_gateway(app: AppHandle, state: BackendState) {
             match cmd.spawn() {
                 Ok(child) => child,
                 Err(err) => {
-                    eprintln!("[gateway] failed to spawn {binary:?}: {err}");
+                    eprintln!("[gateway] failed to spawn {program:?}: {err}");
                     state.mark_ready(DEFAULT_BACKEND_BASE.to_string(), String::new());
                     let _ = app.emit(
                         "hermes:boot-progress",
@@ -252,7 +309,7 @@ pub fn spawn_gateway(app: AppHandle, state: BackendState) {
         }
 
         let Some(stdout) = stdout else {
-            eprintln!("[gateway] stdout unavailable for {binary:?}");
+            eprintln!("[gateway] stdout unavailable for {program:?}");
             return;
         };
 
