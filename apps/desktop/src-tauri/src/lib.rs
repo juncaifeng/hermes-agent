@@ -7,12 +7,16 @@ mod bootstrap;
 mod capture;
 mod commands;
 mod connection_config;
+mod connections;
 mod desktop_misc;
 mod gateway;
+mod preview_watch;
 mod screenshots;
+mod ssh_config;
 mod tls_proxy;
 mod git;
 mod terminal;
+mod updates;
 mod windows;
 
 /// Hermes Desktop — Tauri v2 main process entry.
@@ -30,6 +34,8 @@ pub fn run() {
         .manage(terminal::TerminalState::default())
         .manage(gateway::GatewayState::default())
         .manage(asset_server::AssetBase::default())
+        .manage(connections::RegistryState::default())
+        .manage(preview_watch::PreviewWatchState::default())
         .setup(|app| {
             // Production: serve the renderer over loopback HTTP (see
             // asset_server.rs) BEFORE the window is created, so the window can
@@ -84,6 +90,10 @@ pub fn run() {
                 if let tauri::WindowEvent::Destroyed = event {
                     let gw = window.state::<gateway::GatewayState>();
                     gateway::stop_gateway(&gw);
+                    // No orphan preview watchers past the window they serve.
+                    preview_watch::close_preview_watchers(
+                        &window.state::<preview_watch::PreviewWatchState>(),
+                    );
                     // No orphan floating screenshot button.
                     screenshots::on_main_window_destroyed(window.app_handle());
                 }
@@ -108,6 +118,32 @@ pub fn run() {
             connection_config::apply_connection_config,
             connection_config::test_connection_config,
             connection_config::probe_connection_config,
+            // -- v2 multi-connection registry (port of electron/connection-registry.ts) --
+            connections::connections_list,
+            connections::connections_save,
+            connections::connections_remove,
+            connections::connections_set_primary,
+            connections::connections_set_launch_mode,
+            connections::connections_set_last_used,
+            connections::connections_test,
+            connections::connections_update_managed,
+            connections::connections_update_all,
+            connections::get_connection_for,
+            connections::get_gateway_ws_url_for,
+            // -- updates + uninstall (updates.rs; client updates are installer-managed) --
+            updates::updates_check,
+            updates::updates_apply,
+            updates::updates_get_branch,
+            updates::updates_set_branch,
+            updates::uninstall_summary,
+            updates::uninstall_run,
+            // -- ssh config (port of electron/ssh-config.ts) --
+            ssh_config::ssh_config_hosts,
+            ssh_config::ssh_resolve_host,
+            // -- preview file watching (notify crate) --
+            preview_watch::watch_preview_file,
+            preview_watch::watch_directory,
+            preview_watch::stop_preview_file_watch,
             bootstrap::get_bootstrap_state,
             bootstrap::continue_bootstrap_local,
             bootstrap::reset_bootstrap,

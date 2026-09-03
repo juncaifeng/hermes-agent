@@ -32,17 +32,17 @@ use tauri::{AppHandle, Emitter, Manager};
 pub struct RemoteBlock {
     /// The connection mode this block describes ("local"/"remote"/"cloud"/"ssh").
     #[serde(default)]
-    mode: String,
+    pub(crate) mode: String,
     #[serde(default)]
-    url: String,
+    pub(crate) url: String,
     /// "oauth" | "token" (default token for backward compat).
     #[serde(default)]
-    auth_mode: String,
+    pub(crate) auth_mode: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    token: Option<String>,
+    pub(crate) token: Option<String>,
     /// Cloud org slug for `cloud` mode connections.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    org: String,
+    pub(crate) org: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -50,12 +50,23 @@ pub struct RemoteBlock {
 pub struct ConnectionConfigFile {
     /// "local" | "remote" | "cloud" | "ssh"
     #[serde(default)]
-    mode: String,
+    pub(crate) mode: String,
     #[serde(default)]
-    remote: RemoteBlock,
+    pub(crate) remote: RemoteBlock,
     /// Per-profile remote overrides (profile key → RemoteBlock).
     #[serde(default)]
-    profiles: HashMap<String, RemoteBlock>,
+    pub(crate) profiles: HashMap<String, RemoteBlock>,
+}
+
+/// `pub(crate)` read access for connections.rs (v1→v2 registry migration and
+/// drift reconciliation read the v1 config).
+pub(crate) fn read_connection_config_pub(app: &AppHandle) -> ConnectionConfigFile {
+    read_connection_config(app)
+}
+
+/// `pub(crate)` URL normalization for connections.rs.
+pub(crate) fn normalize_remote_base_url_pub(raw: &str) -> String {
+    normalize_remote_base_url(raw)
 }
 
 // ---------------------------------------------------------------------------

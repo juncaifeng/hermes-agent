@@ -40,6 +40,13 @@ if (isTauri) {
   const desktop = {
     // ---- backend / connection ----
     getConnection: (profile?: string | null) => invoke<any>('get_connection', { profile }),
+    // Registry-scoped backend resolution: dial (connectionId, profile). An
+    // empty/local connectionId delegates to the legacy getConnection path
+    // inside the command itself.
+    getConnectionFor: (payload: { connectionId?: null | string; profile?: null | string }) =>
+      invoke<any>('get_connection_for', { payload }),
+    getGatewayWsUrlFor: (payload: { connectionId?: null | string; profile?: null | string }) =>
+      invoke<any>('get_gateway_ws_url_for', { payload }),
     revalidateConnection: () => invoke<any>('revalidate_connection'),
     touchBackend: (profile?: string | null) => invoke<boolean>('touch_backend', { profile }),
     getGatewayWsUrl: (profile?: null | string) => invoke<any>('get_gateway_ws_url', { profile }),
@@ -56,8 +63,27 @@ if (isTauri) {
     oauthLoginConnectionConfig: () =>
       Promise.resolve({ connected: false, error: 'OAuth login is not supported in this build yet.' }),
     oauthLogoutConnectionConfig: () => Promise.resolve({ ok: true }),
-    sshConfigHosts: () => Promise.resolve({ hosts: [] }),
-    sshResolveHost: () => Promise.resolve({ hostname: null, identityFile: null, port: null, user: null }),
+    // v2 multi-connection registry (port of electron/connection-registry.ts,
+    // migration ordering 7): named agent sources persisted together in
+    // connections.json. Secrets never cross the IPC boundary (list returns
+    // tokenSet/tokenPreview/headerNames). SSH sources register and render
+    // but refuse to dial — the Tauri build has no SSH transport yet.
+    connections: {
+      list: () => invoke<any>('connections_list'),
+      save: (payload: unknown) => invoke<any>('connections_save', { payload }),
+      remove: (id: string) => invoke<any>('connections_remove', { id }),
+      setPrimary: (id: string) => invoke<any>('connections_set_primary', { id }),
+      setLaunchMode: (mode: 'last-used' | 'primary') =>
+        invoke<any>('connections_set_launch_mode', { mode }),
+      setLastUsed: (id: string) => invoke<any>('connections_set_last_used', { id }),
+      test: (id: string) => invoke<any>('connections_test', { id }),
+      updateManaged: (id: string) => invoke<any>('connections_update_managed', { id }),
+      updateAll: (options?: { excludeIds?: string[] }) =>
+        invoke<any>('connections_update_all', { options }),
+      onChanged: (cb: (payload: unknown) => void) => on('hermes:connections:changed', cb),
+    },
+    sshConfigHosts: () => invoke<any>('ssh_config_hosts'),
+    sshResolveHost: (host: string) => invoke<any>('ssh_resolve_host', { host }),
     cloud: {
       status: () =>
         Promise.resolve({ signedIn: false, error: 'Cloud sign-in is not supported in this build yet.' }),
@@ -136,9 +162,12 @@ if (isTauri) {
     // would skip the fallback and treat a bare path string as a PreviewTarget
     // (tabLabelFor then crashes on .split of undefined).
     normalizePreviewTarget: () => Promise.resolve(null),
-    watchPreviewFile: () => Promise.resolve({ ok: true }),
-    watchDirectory: () => Promise.resolve({ ok: true }),
-    stopPreviewFileWatch: () => Promise.resolve({ ok: true }),
+    // Preview/directory watching (notify crate; see preview_watch.rs). The
+    // 120ms debounce, parent-dir watch and target-name filter all mirror the
+    // Electron original; changes arrive as `hermes:preview-file-changed`.
+    watchPreviewFile: (url: string) => invoke<any>('watch_preview_file', { url }),
+    watchDirectory: (dir: string) => invoke<any>('watch_directory', { dir }),
+    stopPreviewFileWatch: (id: string) => invoke<boolean>('stop_preview_file_watch', { id }),
     setActiveWork: (work?: unknown) => invoke<void>('set_active_work', { work }),
     setTitleBarTheme: () => Promise.resolve({ ok: true }),
     setNativeTheme: () => Promise.resolve({ ok: true }),
@@ -289,14 +318,18 @@ if (isTauri) {
       onExit: (id: string, cb: (payload: unknown) => void) => on(`hermes:terminal:${id}:exit`, cb),
     },
     uninstall: {
-      summary: () => Promise.resolve({ sizeBytes: 0, reason: null, targetPaths: [] }),
-      run: () => Promise.resolve({ ok: true }),
+      summary: () => invoke<any>('uninstall_summary'),
+      run: (mode?: string) => invoke<any>('uninstall_run', { mode: mode ?? null }),
     },
     updates: {
-      check: () => Promise.resolve({ available: false, version: null }),
-      apply: () => Promise.resolve({ ok: true }),
-      getBranch: () => Promise.resolve('stable'),
-      setBranch: () => Promise.resolve({ ok: true }),
+      // Client updates are installer-managed in the Tauri MSI deployment —
+      // check returns {supported:false, reason:'installer-managed'} and the
+      // renderer surfaces its install-method state. Backend-side updates
+      // flow through the api proxy / connections.updateAll regardless.
+      check: () => invoke<any>('updates_check'),
+      apply: () => invoke<any>('updates_apply'),
+      getBranch: () => invoke<any>('updates_get_branch'),
+      setBranch: (name: string) => invoke<any>('updates_set_branch', { name }),
       onProgress: (cb: (payload: unknown) => void) => on('hermes:updates:progress', cb),
     },
     themes: {

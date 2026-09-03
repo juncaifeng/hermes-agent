@@ -83,7 +83,29 @@
           "terminal_write",
           "terminal_resize",
           "terminal_cwd",
-          "terminal_dispose"
+          "terminal_dispose",
+          "connections_list",
+          "connections_save",
+          "connections_remove",
+          "connections_set_primary",
+          "connections_set_launch_mode",
+          "connections_set_last_used",
+          "connections_test",
+          "connections_update_managed",
+          "connections_update_all",
+          "get_connection_for",
+          "get_gateway_ws_url_for",
+          "updates_check",
+          "updates_apply",
+          "updates_get_branch",
+          "updates_set_branch",
+          "uninstall_summary",
+          "uninstall_run",
+          "ssh_config_hosts",
+          "ssh_resolve_host",
+          "watch_preview_file",
+          "watch_directory",
+          "stop_preview_file_watch"
         ]
       }
     }

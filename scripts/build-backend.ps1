@@ -71,11 +71,12 @@ $pkgDirs = @(
 )
 # Single-file top-level modules (must mirror `py-modules` in pyproject.toml).
 $pyModules = @(
-  'run_agent', 'model_tools', 'toolsets', 'batch_runner',
+  'run_agent', 'registration_lifecycle', 'model_tools', 'toolsets', 'batch_runner',
   'trajectory_compressor', 'toolset_distributions', 'cli',
   'hermes_bootstrap', 'hermes_constants', 'hermes_state',
   'hermes_state_common', 'hermes_state_portability', 'hermes_state_schema',
-  'hermes_state_search', 'hermes_time', 'hermes_logging', 'utils', 'mcp_serve'
+  'hermes_state_search', 'hermes_startup_watchdog', 'hermes_time',
+  'hermes_logging', 'utils', 'mcp_serve'
 )
 # Asset dirs resolved against PROJECT_ROOT (parent of the package tree) at
 # runtime — see agent/i18n.py and hermes_constants.py.

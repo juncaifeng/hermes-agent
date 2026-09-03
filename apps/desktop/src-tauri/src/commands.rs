@@ -19,6 +19,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 
 /// `*_state` constants mirror the Electron `serveBackendArgs` defaults.
 pub const DEFAULT_BACKEND_BASE: &str = "http://127.0.0.1:8080";
@@ -29,7 +30,9 @@ const DEFAULT_FETCH_TIMEOUT_MS: u64 = 20_000;
 /// target. Mirrors the Electron `DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS` (90s) —
 /// cold starts on a slow disk / aggressive AV can take 30-60s before uvicorn
 /// binds, so a tight deadline would kill a healthy-but-starting backend.
-const BACKEND_READY_TIMEOUT_SECS: u64 = 90;
+/// Cold-start tolerant deadline for the managed gateway to announce its
+/// ephemeral port (mirrors Electron's `BACKEND_READY_TIMEOUT_SECS`).
+pub(crate) const BACKEND_READY_TIMEOUT_SECS: u64 = 90;
 
 // ---------------------------------------------------------------------------
 // Shared connection state
@@ -100,6 +103,15 @@ impl BackendState {
     pub fn is_ready(&self) -> bool {
         self.ready.0.lock().map(|g| *g).unwrap_or(false)
     }
+
+    /// Current session token (empty when unset) — read access for sibling
+    /// modules (connections.rs local-route probes).
+    pub(crate) fn token_snapshot(&self) -> String {
+        self.token
+            .lock()
+            .map(|g| g.clone().unwrap_or_default())
+            .unwrap_or_default()
+    }
 }
 
 impl Default for BackendState {
@@ -136,6 +148,12 @@ pub struct ApiRequest {
     #[serde(default)]
     #[allow(dead_code)]
     profile: Option<String>,
+    /// Route this REST call to a specific REGISTERED gateway connection (v2
+    /// registry). Omit / '' / 'local' keeps the local primary backend path;
+    /// a remote id resolves through the owning connection's base URL + auth
+    /// (see connections.rs `api_target`).
+    #[serde(default)]
+    connection_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -151,9 +169,9 @@ pub struct UploadPayload {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionInfo {
-    base_url: String,
-    token: String,
-    ws_url: String,
+    pub(crate) base_url: String,
+    pub(crate) token: String,
+    pub(crate) ws_url: String,
     mode: String,
     auth_mode: String,
     source: String,
@@ -263,20 +281,63 @@ fn boot_progress_snapshot(state: &BackendState) -> BootProgress {
 /// `hermes:api` — generic REST proxy to the connected backend.
 #[tauri::command]
 pub async fn api(
+    app: tauri::AppHandle,
     state: tauri::State<'_, BackendState>,
     request: ApiRequest,
 ) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
-    let base = state
-        .base_url
-        .lock()
-        .map(|g| g.trim_end_matches('/').to_string())
-        .map_err(|e| format!("backend state lock: {e}"))?;
+
+    // v2 registry routing: a connection-scoped request (cron jobs and their
+    // run sessions live in the OWNING gateway's state.db) resolves through
+    // the registered connection instead of the local primary.
+    let mut remote_headers: Option<std::collections::HashMap<String, String>> = None;
+    let (base, token) = match request
+        .connection_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty() && *c != "local")
+    {
+        Some(connection_id) => {
+            let registry = app.state::<crate::connections::RegistryState>();
+            match crate::connections::api_target(&app, &registry, connection_id)? {
+                Some((base, token, headers)) => {
+                    let mut flat = std::collections::HashMap::new();
+                    if let Some(headers) = &headers {
+                        for (name, value) in headers {
+                            if let Some(value) = crate::connections::usable_header_value_pub(value) {
+                                flat.insert(name.clone(), value);
+                            }
+                        }
+                    }
+                    remote_headers = (!flat.is_empty()).then_some(flat);
+                    (base, token)
+                }
+                // api_target only returns None for local — handled above.
+                None => (
+                    state
+                        .base_url
+                        .lock()
+                        .map(|g| g.trim_end_matches('/').to_string())
+                        .map_err(|e| format!("backend state lock: {e}"))?,
+                    state.token_snapshot(),
+                ),
+            }
+        }
+        None => (
+            state
+                .base_url
+                .lock()
+                .map(|g| g.trim_end_matches('/').to_string())
+                .map_err(|e| format!("backend state lock: {e}"))?,
+            state.token_snapshot(),
+        ),
+    };
     let url = format!("{base}/{}", request.path.trim_start_matches('/'));
 
     let timeout_ms = request.timeout_ms.unwrap_or(DEFAULT_FETCH_TIMEOUT_MS);
     let method = request
         .method
+        .clone()
         .unwrap_or_else(|| "GET".to_string())
         .to_uppercase();
 
@@ -290,13 +351,13 @@ pub async fn api(
     .timeout(std::time::Duration::from_millis(timeout_ms));
 
     // Token-mode auth header (oauth/cookie support lands in a later increment).
-    let token = state
-        .token
-        .lock()
-        .map(|g| g.clone())
-        .map_err(|e| format!("backend state lock: {e}"))?;
-    if let Some(token) = &token {
-        builder = builder.header("X-Hermes-Session-Token", token);
+    if !token.is_empty() {
+        builder = builder.header("X-Hermes-Session-Token", &token);
+    }
+    if let Some(headers) = &remote_headers {
+        for (name, value) in headers {
+            builder = builder.header(name.as_str(), value);
+        }
     }
 
     let response = if let Some(upload) = request.upload {
@@ -379,8 +440,9 @@ pub fn get_gateway_ws_url(
 }
 
 /// Shared ConnectionInfo builder (no readiness wait — callers decide whether
-/// to block first).
-fn build_connection(
+/// to block first). `pub(crate)` so connections.rs can reuse it for the
+/// registry's local route.
+pub(crate) fn build_connection(
     state: &BackendState,
     profile: Option<String>,
 ) -> Result<ConnectionInfo, String> {
@@ -595,7 +657,8 @@ fn base64_encode(bytes: &[u8]) -> String {
 
 /// Convert an `http://`/`https://` base URL to its `ws://`/`wss://` form so
 /// the renderer can hand it straight to `JsonRpcGatewayClient.connect()`.
-fn to_ws_scheme(base: &str) -> String {
+/// `pub(crate)` for connections.rs (registry remote ws urls).
+pub(crate) fn to_ws_scheme(base: &str) -> String {
     if base.starts_with("https://") {
         format!("wss://{}", &base["https://".len()..])
     } else if base.starts_with("http://") {

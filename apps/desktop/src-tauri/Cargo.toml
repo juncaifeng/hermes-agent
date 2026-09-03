@@ -88,6 +88,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-store = "2"
+notify = "8.2.0"
 
 [profile.release]
 panic = "abort"

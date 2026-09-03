@@ -308,7 +308,9 @@ describe('useComposerActions native image drops', () => {
     })
 
     expect(attached).toBe(true)
-    expect(saveImageBuffer).toHaveBeenCalledWith(expect.any(Uint8Array), '.png', 'Screen Shot 2026-08-11.png')
+    // dirMode defaults to app_data → dir undefined; name keeps the dropped
+    // file's original name (screenshots dir routing is a desktop-branch feature).
+    expect(saveImageBuffer).toHaveBeenCalledWith(expect.any(Uint8Array), '.png', undefined, 'Screen Shot 2026-08-11.png')
     expect(readFileDataUrl).toHaveBeenCalledWith(durablePath)
     expect(readFileDataUrl).not.toHaveBeenCalledWith(transientPath)
     // The bounded-preview pipeline no longer retains the full-resolution data
