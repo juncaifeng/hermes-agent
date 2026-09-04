@@ -279,6 +279,44 @@ Get-ChildItem $outDir -Recurse -Directory -Filter '__pycache__' -ErrorAction Sil
 $scriptsDir = Join-Path $pythonDir 'Scripts'
 if (Test-Path $scriptsDir) { Remove-Item $scriptsDir -Recurse -Force }
 
+# --- 6.5 shorten MAX_PATH-breaking files --------------------------------------
+# WiX (MSI) validates each bundled file through the repo-relative source path
+# (`src-tauri\..\backend-dist\...`), which eats ~11 extra characters. Fern-
+# generated SDK stubs (e.g. elevenlabs' streaming-with-timestamps types) can
+# push a full path past the Windows 260-char MAX_PATH, and light.exe then
+# fails with LGHT0103 "cannot find the file". Rename any offending .py module
+# to a short unique name and rewrite its importers — Python imports by file
+# name, so both must move together.
+$longPyFiles = @()
+if ($outDir.Length -gt 0) {
+  $longPyFiles = @(Get-ChildItem $outDir -Recurse -File -Filter '*.py' -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName.Length -gt 245 })
+}
+$idx = 0
+foreach ($f in $longPyFiles) {
+  $oldModule = $f.BaseName
+  if ([string]::IsNullOrEmpty($oldModule)) { continue }
+  $newModule = '_hbdx{0:d3}' -f $idx
+  $idx++
+  Rename-Item -Path $f.FullName -NewName "$newModule.py"
+  # Rewrite every textual reference to the module name (import sites can live
+  # anywhere in the package — e.g. elevenlabs re-exports the type from both
+  # text_to_speech/ and types/). Walk up to the package root (the topmost dir
+  # whose parent lacks __init__.py), then rewrite matches below it. The old
+  # name is 100+ chars of generated gibberish — collisions are impossible.
+  $pkgRoot = $f.Directory
+  while ($pkgRoot.Parent -and (Test-Path (Join-Path $pkgRoot.Parent '*')) -and (Test-Path (Join-Path $pkgRoot.Parent '__init__.py'))) {
+    $pkgRoot = $pkgRoot.Parent
+  }
+  foreach ($ref in (Get-ChildItem $pkgRoot -Recurse -File -Filter '*.py' -ErrorAction SilentlyContinue)) {
+    $c = Get-Content $ref.FullName -Raw
+    if ($c -and $c.Contains($oldModule)) {
+      Set-Content -Path $ref.FullName -Value ($c.Replace($oldModule, $newModule)) -NoNewline -Encoding utf8
+    }
+  }
+  Write-Host "[build-backend] shortened $($f.FullName.Length)-char module -> $newModule.py ($oldModule)"
+}
+
 # --- 7. report ----------------------------------------------------------------
 $size = (Get-ChildItem $outDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $sizeMb = [math]::Round($size / 1MB, 1)
