@@ -166,6 +166,66 @@ Push-Location $repoRoot
 try {
   & $uv pip install --python $stagingPython -r pyproject.toml
   if ($LASTEXITCODE -ne 0) { throw "uv pip install failed (exit $LASTEXITCODE)" }
+
+  # --- 4.5 pre-install the lazy-dep feature set --------------------------------
+  # The backend lazy-installs optional provider/STT/messaging SDKs on first
+  # use (tools/lazy_deps.py LAZY_DEPS) — but the installed bundle lives under
+  # Program Files (read-only), so every runtime install fails and features
+  # report "package is required" (e.g. the Anthropic provider). Pre-install
+  # the whole allowlist here so the bundle is self-contained.
+  #
+  # The spec list is PARSED from LAZY_DEPS (not hand-mirrored) so a new
+  # upstream feature ships automatically. Only `wake.*` is skipped: wake-word
+  # engines drag in onnxruntime (~110 MB) for hardware the desktop rarely
+  # uses.
+  $lazyDepsSrc = Join-Path $repoRoot 'tools\lazy_deps.py'
+  $lazySrc = Get-Content $lazyDepsSrc -Raw
+  # Isolate the LAZY_DEPS = { ... } block so nothing outside it is parsed.
+  if (-not ($lazySrc -match '(?ms)^LAZY_DEPS[^=]*=\s*\{(.*?)^\}')) {
+    throw "could not locate the LAZY_DEPS table in $lazyDepsSrc"
+  }
+  $specs = [System.Collections.Generic.List[string]]::new()
+  $currentFeature = $null
+  foreach ($line in ($Matches[1] -split "`n")) {
+    if ($line.TrimStart().StartsWith('#')) { continue }
+    if ($line -match '^\s*"([\w.-]+)"\s*:') {
+      $currentFeature = $Matches[1]
+      # Same-line shape: "feature": ("spec",), — keep the tail for spec pickup.
+      $tail = $line -replace '^\s*"[\w.-]+"\s*:\s*', ''
+    } else {
+      $tail = $line
+    }
+    if ($currentFeature) {
+      foreach ($m in [regex]::Matches($tail, '"([^"]+)"')) {
+        # Guard against prose accidentally matching inside the table (e.g.
+        # quoted words in comments): a real pip spec never contains spaces.
+        $spec = $m.Groups[1].Value
+        if ($currentFeature -notlike 'wake.*' -and $spec -notmatch '\s') { $specs.Add($spec) }
+      }
+    }
+  }
+  $uniqueSpecs = @($specs | Select-Object -Unique)
+  if ($uniqueSpecs.Count -eq 0) { throw "parsed an empty lazy-dep spec list — refusing to ship without provider SDKs" }
+  # Windows build adjustments: python-olm (via mautrix[encryption]) ships no
+  # Windows wheels and its C build needs libolm — drop the [encryption] extra
+  # so Matrix still works, just without E2E crypto.
+  $uniqueSpecs = @($uniqueSpecs | ForEach-Object { $_ -replace '^mautrix\[encryption\]==', 'mautrix==' })
+  Write-Host "[build-backend] pre-installing $($uniqueSpecs.Count) lazy-dep packages (providers/STT/messaging/...) ..."
+  & $uv pip install --python $stagingPython @uniqueSpecs
+  if ($LASTEXITCODE -ne 0) {
+    # Some allowlist entries are sdist-only C extensions that cannot build on
+    # Windows (pilk, python-olm, ...). One bad egg must not block the whole
+    # pre-install: fall back to per-package installs and skip the failures —
+    # the feature just stays lazy-unavailable, same as before this pre-install
+    # existed.
+    Write-Warning "[build-backend] bulk lazy-dep install failed; retrying per-package to skip Windows-unbuildable ones"
+    $failed = @()
+    foreach ($spec in $uniqueSpecs) {
+      & $uv pip install --python $stagingPython $spec 2>$null
+      if ($LASTEXITCODE -ne 0) { $failed += $spec; Write-Warning "[build-backend]   skipped: $spec" }
+    }
+    if ($failed.Count -gt 0) { Write-Warning "[build-backend] lazy-deps skipped on Windows: $($failed -join ', ')" }
+  }
 } finally {
   Pop-Location
 }
