@@ -1,0 +1,150 @@
+name: Desktop MSI
+
+# Build the Tauri desktop bundle (renderer + Rust shell + bundled python
+# backend) on GitHub's Windows runners and ship it as an MSI.
+#
+#   branch push  → MSI attached as a workflow artifact
+#   v* tag push  → MSI published to the tag's GitHub Release
+#
+# The app version is stamped from the pushed tag (branch builds fall back to
+# the newest x.y.z tag on the remote) — never from the placeholder committed
+# in tauri.conf.json.
+#
+# Toolchain notes (mirrors the verified local build):
+#   - rust stable-x86_64-pc-windows-gnu — the MinGW toolchain matches the
+#     crate-type / binutils assumptions in apps/desktop/src-tauri/Cargo.toml
+#   - windres from choco's mingw (C:\ProgramData\mingw64\mingw64\bin) for
+#     tauri-winres
+#   - the backend bundle (python-build-standalone + all non-wake LAZY_DEPS
+#     pre-installed) is built by scripts/build-backend.ps1 BEFORE
+#     `tauri build` — bundle.resources references ../backend-dist/hermes-backend
+
+on:
+  push:
+    branches: [desktop/tauri-v2-migration]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # publish the MSI to tag releases
+
+concurrency:
+  group: desktop-msi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build MSI (windows, gnu)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # ── Node (renderer build; workspace deps hoist to the repo root) ────
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # ── uv: drives build-backend.ps1 (python-build-standalone + LAZY_DEPS)
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
+        with:
+          version: '0.9.28'
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            tools/lazy_deps.py
+
+      # ── Rust (GNU toolchain, same as the verified local build) ──────────
+      - name: Install stable-x86_64-pc-windows-gnu
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu --no-self-update
+          rustup default stable-x86_64-pc-windows-gnu
+
+      # tauri-winres shells out to windres; choco's mingw provides it at the
+      # same path the local build uses.
+      - name: Install mingw (windres for tauri-winres)
+        run: |
+          choco install mingw -y --no-progress
+          Add-Content $env:GITHUB_PATH 'C:\ProgramData\mingw64\mingw64\bin'
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      # ── Resolve the version this build is stamped with ──────────────────
+      #   tag push    → the tag itself (v0.21.0 → 0.21.0)
+      #   branch/wf   → the newest x.y.z tag on the remote (ls-remote, no
+      #                 shallow-clone reachability games; the name is all the
+      #                 MSI needs)
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = $null
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $v = $env:GITHUB_REF_NAME -replace '^v', ''
+          } else {
+            $tags = git ls-remote --tags origin |
+              ForEach-Object { if ($_ -match 'refs/tags/v(\d+\.\d+\.\d+)$') { $Matches[1] } }
+            $v = $tags | Sort-Object { [version]$_ } | Select-Object -Last 1
+          }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') {
+            throw "refusing to build: '$v' is not a valid x.y.z version (push a vX.Y.Z tag, or tag the remote first)"
+          }
+          Write-Host "build version: $v"
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      # Stamp it into tauri.conf.json ONLY — not Cargo.toml: cargo would
+      # rewrite Cargo.lock, which rust-cache keys on, so every version bump
+      # would evict the whole dependency cache for zero benefit. tauri's
+      # bundler takes the MSI ProductVersion and file name from conf.version.
+      - name: Stamp version into tauri.conf.json
+        shell: pwsh
+        run: |
+          $conf = 'apps/desktop/src-tauri/tauri.conf.json'
+          (Get-Content $conf -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"${{ steps.ver.outputs.version }}`"" |
+            Set-Content $conf -NoNewline
+          Select-String -Path $conf -Pattern '"version"'
+
+      - name: npm ci (root workspace install)
+        uses: ./.github/actions/retry
+        with:
+          command: npm ci
+
+      # ~750MB bundle: standalone CPython + every non-wake LAZY_DEPS feature
+      # pre-installed, MAX_PATH-breaking modules shortened for WiX.
+      - name: Build backend bundle
+        shell: pwsh
+        run: ./scripts/build-backend.ps1
+
+      - name: Build MSI (tauri build)
+        shell: pwsh
+        working-directory: apps/desktop
+        run: npx tauri build
+
+      - name: Locate MSI
+        id: msi
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem 'apps/desktop/src-tauri/target/release/bundle/msi/*.msi' |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $msi) { throw 'no MSI produced' }
+          Write-Host "MSI: $($msi.FullName) ($([math]::Round($msi.Length/1MB)) MB)"
+          "path=$($msi.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Hermes-MSI-v${{ steps.ver.outputs.version }}-run${{ github.run_number }}
+          path: ${{ steps.msi.outputs.path }}
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish to tag release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.msi.outputs.path }}
+          generate_release_notes: true
