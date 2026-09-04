@@ -4,6 +4,8 @@
   "version": "0.19.2",
   "identifier": "com.nousresearch.hermes",
   "build": {
+    "beforeBuildCommand": "node scripts/assert-root-install.mjs && vite build",
+    "beforeDevCommand": "node scripts/assert-root-install.mjs && vite --host 127.0.0.1 --port 5174",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5174"
   },
