@@ -63,21 +63,19 @@ $outDir = Join-Path $repoRoot 'apps\desktop\backend-dist\hermes-backend'
 $pythonDir = Join-Path $outDir 'python'
 $appDir = Join-Path $outDir 'app'
 
-# Top-level importable packages (must mirror [tool.setuptools.packages.find]
-# in pyproject.toml).
-$pkgDirs = @(
-  'agent', 'tools', 'hermes_cli', 'gateway', 'tui_gateway', 'cron',
-  'acp_adapter', 'plugins', 'providers'
-)
-# Single-file top-level modules (must mirror `py-modules` in pyproject.toml).
-$pyModules = @(
-  'run_agent', 'registration_lifecycle', 'model_tools', 'toolsets', 'batch_runner',
-  'trajectory_compressor', 'toolset_distributions', 'cli',
-  'hermes_bootstrap', 'hermes_constants', 'hermes_state',
-  'hermes_state_common', 'hermes_state_portability', 'hermes_state_schema',
-  'hermes_state_search', 'hermes_startup_watchdog', 'hermes_time',
-  'hermes_logging', 'utils', 'mcp_serve'
-)
+# Auto-discover the importable source layout from the checkout instead of
+# mirroring pyproject.toml by hand — an upstream merge that adds a top-level
+# module must not silently ship a backend that crashes on import (that is
+# exactly how `hermes_state_holders` went missing once).
+#
+#   packages: top-level dirs carrying __init__.py, minus `tests`
+#   modules : top-level *.py, minus build/test scaffolding (setup.py)
+$pkgDirs = Get-ChildItem $repoRoot -Directory |
+  Where-Object { (Test-Path (Join-Path $_.FullName '__init__.py')) -and ($_.Name -ne 'tests') } |
+  Select-Object -ExpandProperty Name
+$pyModules = Get-ChildItem $repoRoot -Filter *.py -File |
+  Where-Object { $_.Name -notin @('setup.py') } |
+  Select-Object -ExpandProperty BaseName
 # Asset dirs resolved against PROJECT_ROOT (parent of the package tree) at
 # runtime — see agent/i18n.py and hermes_constants.py.
 $assetDirs = @('locales', 'skills', 'optional-skills', 'optional-mcps')
