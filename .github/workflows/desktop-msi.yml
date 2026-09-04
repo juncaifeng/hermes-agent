@@ -88,10 +88,10 @@ jobs:
           } else {
             $tags = git ls-remote --tags origin |
               ForEach-Object { if ($_ -match 'refs/tags/v(\d+\.\d+\.\d+)$') { $Matches[1] } }
-            $v = $tags | Sort-Object { [version]$_ } | Select-Object -Last 1
+            $v = @($tags | Sort-Object { [version]$_ } | Select-Object -Last 1)[0]
           }
-          if ($v -notmatch '^\d+\.\d+\.\d+$') {
-            throw "refusing to build: '$v' is not a valid x.y.z version (push a vX.Y.Z tag, or tag the remote first)"
+          if ([string]::IsNullOrWhiteSpace($v) -or $v -notmatch '^\d+\.\d+\.\d+$') {
+            throw "refusing to build: '$v' is not a valid x.y.z version (push a vX.Y.Z tag to this fork first — branch builds stamp themselves from the newest vX.Y.Z tag)"
           }
           Write-Host "build version: $v"
           "version=$v" >> $env:GITHUB_OUTPUT
